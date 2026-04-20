@@ -27,7 +27,8 @@
   },
   "main": "index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run copy-icons",
+    "copy-icons": "mkdir -p dist/nodes/AgentLangfuse/icons && cp nodes/AgentLangfuse/icons/*.svg dist/nodes/AgentLangfuse/icons/",
     "dev": "tsc --watch",
     "prepublishOnly": "npm run build"
   },
