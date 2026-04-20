@@ -570,12 +570,20 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
       }
 
       // Override model properties from Langfuse prompt config
-      // LangChain uses both 'model' (for API calls) and 'modelName' (for reporting)
+      // LangChain stores model in multiple places: model, modelName, and lc_kwargs
       const modelObj = model as Record<string, unknown>;
       modelObj.model = langfusePromptResult.modelName;
       modelObj.modelName = langfusePromptResult.modelName;
+      // lc_kwargs is used by LangChain callbacks (including Langfuse) for model reporting
+      if (modelObj.lc_kwargs && typeof modelObj.lc_kwargs === 'object') {
+        (modelObj.lc_kwargs as Record<string, unknown>).model = langfusePromptResult.modelName;
+        (modelObj.lc_kwargs as Record<string, unknown>).modelName = langfusePromptResult.modelName;
+      }
       if (langfusePromptResult.temperature !== undefined) {
         modelObj.temperature = langfusePromptResult.temperature;
+        if (modelObj.lc_kwargs && typeof modelObj.lc_kwargs === 'object') {
+          (modelObj.lc_kwargs as Record<string, unknown>).temperature = langfusePromptResult.temperature;
+        }
       }
     }
   }
