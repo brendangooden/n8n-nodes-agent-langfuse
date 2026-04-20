@@ -1,8 +1,14 @@
 # n8n-nodes-agent-langfuse
 
+[![npm version](https://img.shields.io/npm/v/n8n-nodes-agent-langfuse)](https://www.npmjs.com/package/n8n-nodes-agent-langfuse)
+[![npm downloads](https://img.shields.io/npm/dm/n8n-nodes-agent-langfuse)](https://www.npmjs.com/package/n8n-nodes-agent-langfuse)
+[![license](https://img.shields.io/npm/l/n8n-nodes-agent-langfuse)](LICENSE)
+
 An n8n community node that brings **AI Agent execution** and **[Langfuse](https://langfuse.com) observability** together in a single node. Select prompts from Langfuse, override models dynamically, and get full tracing — all without extra nodes in your workflow.
 
 > **First n8n node to combine Agent V3 architecture with native Langfuse prompt management and tracing.**
+
+![Node in n8n canvas](assets/node-canvas.png)
 
 ## Why this node?
 
@@ -27,11 +33,19 @@ If you use n8n's AI Agent with Langfuse, you currently need:
 | Fallback model | Yes | N/A | Yes |
 | Batching | Yes | N/A | Yes |
 
+## Quick Start
+
+1. **Install** the node: Settings > Community Nodes > Install > `n8n-nodes-agent-langfuse`
+2. **Create** a Langfuse API credential with your Base URL, Public Key, and Secret Key
+3. **Add** "AI Agent + Langfuse" to your workflow and connect a Chat Model
+4. **Select** a Langfuse prompt from the dropdown
+5. **Execute** — the agent runs with your prompt and traces to Langfuse automatically
+
 ## Features
 
 - **Langfuse Prompt Selector** — Browse and select production prompts from Langfuse directly in the node UI. No HTTP Request nodes needed.
 - **Model Override** — Use the model and temperature defined in your Langfuse prompt config, or override manually. Switch models by changing Langfuse config — no workflow edits required.
-- **Automatic Tracing** — Every execution is traced to Langfuse with full LLM call details, tool usage, and intermediate steps.
+- **Automatic Tracing** — Every execution is traced to Langfuse with full LLM call details, tool usage, and intermediate steps. The trace name defaults to the **n8n node name**, so naming your node descriptively (e.g., "AI Agent - Selector") makes traces easy to find in Langfuse.
 - **Auto Metadata** — Project name, prompt name, and prompt version are automatically included in every trace. Add your own custom metadata on top.
 - **Streaming** — Full streaming support for real-time responses.
 - **Fallback Model** — Configure a backup model that activates if the primary fails.
@@ -56,18 +70,11 @@ npm install n8n-nodes-agent-langfuse
 # Restart n8n
 ```
 
-### Docker
-
-```bash
-# From inside your n8n container
-cd /home/node/.n8n/nodes
-npm install n8n-nodes-agent-langfuse
-# Restart the container
-```
-
 ## Setup
 
 ### 1. Create Langfuse Credentials
+
+![Credential setup](assets/credential-setup.png)
 
 1. In n8n, go to **Credentials > New Credential**
 2. Search for **Langfuse API**
@@ -75,18 +82,20 @@ npm install n8n-nodes-agent-langfuse
    - **Base URL**: Your Langfuse instance URL (e.g., `https://cloud.langfuse.com` or your self-hosted URL)
    - **Public Key**: Your Langfuse project public key
    - **Secret Key**: Your Langfuse project secret key
-4. Click **Test** to verify the connection
+4. Click **Test** to verify the connection — you should see "Connection tested successfully"
 
 > **Tip:** Find your keys in Langfuse under **Settings > Projects > [Your Project] > API Keys**
 
-### 2. Add the Node to Your Workflow
+### 2. Configure the Node
+
+![Node configuration](assets/node-configuration.png)
 
 1. Search for **"AI Agent + Langfuse"** in the node panel
 2. Drag it into your workflow
 3. Connect a **Chat Model** (OpenAI, OpenRouter, Anthropic, etc.) to the "Chat Model" input
-4. Optionally connect **Tools**, **Memory**, or **Output Parser**
-
-### 3. Configure the Node
+4. Select your Langfuse credential
+5. Choose your prompt from the dropdown
+6. Optionally connect **Tools**, **Memory**, or **Output Parser**
 
 ## Configuration
 
@@ -96,6 +105,15 @@ npm install n8n-nodes-agent-langfuse
 |--------|-------------|
 | **Langfuse Prompt** | Select a production prompt from your Langfuse project. The dropdown shows all `chat`-type prompts. |
 | **Manual** | Write the system message directly in the node (standard behavior). |
+
+### Langfuse Prompt Selector
+
+![Prompt dropdown](assets/prompt-dropdown.png)
+
+The dropdown fetches all production `chat`-type prompts from your Langfuse project. Select one, and the node automatically:
+- Injects the prompt content as the system message
+- Reads the model and temperature from the prompt config (if Model Source = "From Langfuse")
+- Includes the prompt name and version in the trace metadata
 
 ### Model Source (when using Langfuse Prompt)
 
@@ -119,7 +137,7 @@ npm install n8n-nodes-agent-langfuse
 |-------|-------------|
 | **Session ID** | Groups related traces in Langfuse. Supports n8n expressions (e.g., `{{ $json.sessionId }}`). |
 | **User ID** | Identifies the end user. Supports expressions. |
-| **Trace Name** | Custom name for the trace. Defaults to the node name if empty. |
+| **Trace Name** | Custom name for the trace. **Defaults to the n8n node name** — so naming your node "AI Agent - Selector" will make the trace appear as "AI Agent - Selector" in Langfuse. |
 | **Custom Metadata (JSON)** | Any additional metadata you want to attach to traces. |
 
 #### Automatic Metadata
@@ -153,6 +171,16 @@ Your custom metadata is merged on top of the automatic fields. You can override 
   "n8n_exec_id": 1234
 }
 ```
+
+### Langfuse Trace Output
+
+![Langfuse trace](assets/langfuse-trace.png)
+
+Every execution produces a full trace in Langfuse showing:
+- The complete LLM call chain (agent, prompt template, model call, output parsing)
+- Token usage and cost
+- The output with structured fields
+- All metadata (automatic + custom)
 
 ### Options
 
