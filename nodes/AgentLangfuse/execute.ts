@@ -570,9 +570,12 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
       }
 
       // Override model properties from Langfuse prompt config
-      (model as { modelName: string }).modelName = langfusePromptResult.modelName;
+      // LangChain uses both 'model' (for API calls) and 'modelName' (for reporting)
+      const modelObj = model as Record<string, unknown>;
+      modelObj.model = langfusePromptResult.modelName;
+      modelObj.modelName = langfusePromptResult.modelName;
       if (langfusePromptResult.temperature !== undefined) {
-        (model as { temperature: number }).temperature = langfusePromptResult.temperature;
+        modelObj.temperature = langfusePromptResult.temperature;
       }
     }
   }
