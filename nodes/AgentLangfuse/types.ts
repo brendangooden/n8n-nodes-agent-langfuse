@@ -1,7 +1,9 @@
 export interface LangfuseCredentials {
-  url: string;
+  url?: string;
+  baseUrl?: string;
   publicKey: string;
   secretKey: string;
+  [key: string]: unknown;
 }
 
 export interface LangfusePromptResult {

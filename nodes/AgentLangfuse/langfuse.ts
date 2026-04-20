@@ -13,7 +13,8 @@ async function langfuseApiRequest(
   credentials: LangfuseCredentials,
   path: string,
 ): Promise<unknown> {
-  const url = `${credentials.url.replace(/\/$/, '')}${path}`;
+  const baseUrl = credentials.url || credentials.baseUrl || 'https://cloud.langfuse.com';
+  const url = `${baseUrl.replace(/\/$/, '')}${path}`;
   const auth = Buffer.from(`${credentials.publicKey}:${credentials.secretKey}`).toString('base64');
 
   const response = await fetch(url, {
@@ -48,9 +49,10 @@ export async function fetchPromptNames(
       .filter((p) => p.type === 'chat')
       .map((p) => ({ name: p.name, value: p.name }));
   } catch (error) {
+    const baseUrl = credentials.url || credentials.baseUrl || 'https://cloud.langfuse.com';
     throw new NodeOperationError(
       node,
-      `Cannot connect to Langfuse at ${credentials.url}: ${(error as Error).message}`,
+      `Cannot connect to Langfuse at ${baseUrl}: ${(error as Error).message}`,
     );
   }
 }
@@ -92,10 +94,11 @@ export function createLangfuseHandler(
   credentials: LangfuseCredentials,
   metadata: LangfuseMetadata,
 ): CallbackHandler {
+  const baseUrl = credentials.url || credentials.baseUrl || 'https://cloud.langfuse.com';
   return new CallbackHandler({
     publicKey: credentials.publicKey,
     secretKey: credentials.secretKey,
-    baseUrl: credentials.url,
+    baseUrl,
     sessionId: metadata.sessionId,
     userId: metadata.userId,
     metadata: metadata.customMetadata,
