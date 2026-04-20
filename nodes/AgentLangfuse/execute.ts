@@ -514,7 +514,7 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
 
   // Get shared resources (model, memory) once
   const memory = await getOptionalMemory(this);
-  const model = await getChatModel(this, 0);
+  let model = await getChatModel(this, 0);
 
   if (!model) {
     throw new NodeOperationError(
@@ -569,22 +569,25 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
         );
       }
 
-      // Override model properties from Langfuse prompt config
-      // LangChain stores model in multiple places: model, modelName, and lc_kwargs
-      const modelObj = model as Record<string, unknown>;
-      modelObj.model = langfusePromptResult.modelName;
-      modelObj.modelName = langfusePromptResult.modelName;
-      // lc_kwargs is used by LangChain callbacks (including Langfuse) for model reporting
-      if (modelObj.lc_kwargs && typeof modelObj.lc_kwargs === 'object') {
-        (modelObj.lc_kwargs as Record<string, unknown>).model = langfusePromptResult.modelName;
-        (modelObj.lc_kwargs as Record<string, unknown>).modelName = langfusePromptResult.modelName;
-      }
-      if (langfusePromptResult.temperature !== undefined) {
-        modelObj.temperature = langfusePromptResult.temperature;
-        if (modelObj.lc_kwargs && typeof modelObj.lc_kwargs === 'object') {
-          (modelObj.lc_kwargs as Record<string, unknown>).temperature = langfusePromptResult.temperature;
-        }
-      }
+      // Create a new model instance with the Langfuse model name
+      // Mutating the existing model doesn't work reliably because n8n's task runner
+      // may serialize/deserialize the model object, losing mutations
+      const sourceModel = model as Record<string, unknown>;
+      const targetModel = langfusePromptResult.modelName!;
+      const targetTemp = langfusePromptResult.temperature ?? sourceModel.temperature;
+
+      // Copy constructor params from the source model and override model + temperature
+      const sourceKwargs = (sourceModel.lc_kwargs as Record<string, unknown>) ?? {};
+      const newModelParams = {
+        ...sourceKwargs,
+        model: targetModel,
+        modelName: targetModel,
+        temperature: targetTemp,
+      };
+
+      // Re-create the model with the new params using the same class
+      const ModelClass = sourceModel.constructor as new (params: Record<string, unknown>) => unknown;
+      model = new ModelClass(newModelParams);
     }
   }
 
