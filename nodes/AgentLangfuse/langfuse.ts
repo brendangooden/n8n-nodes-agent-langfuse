@@ -1,3 +1,4 @@
+import { Langfuse, type ChatPromptClient } from 'langfuse';
 import { CallbackHandler } from 'langfuse-langchain';
 import { NodeOperationError } from 'n8n-workflow';
 import type { INode } from 'n8n-workflow';
@@ -5,17 +6,36 @@ import type {
   LangfuseCredentials,
   LangfuseMetadata,
   LangfusePromptListItem,
-  LangfusePromptResponse,
   LangfusePromptResult,
 } from './types';
 
+function resolveBaseUrl(credentials: LangfuseCredentials): string {
+  return (
+    credentials.host ||
+    credentials.url ||
+    credentials.baseUrl ||
+    'https://cloud.langfuse.com'
+  );
+}
+
+function createLangfuseClient(credentials: LangfuseCredentials): Langfuse {
+  return new Langfuse({
+    publicKey: credentials.publicKey,
+    secretKey: credentials.secretKey,
+    baseUrl: resolveBaseUrl(credentials),
+  });
+}
+
+// Raw fetch used only for endpoints not exposed on the typed SDK surface
+// (prompt list + project name).
 async function langfuseApiRequest(
   credentials: LangfuseCredentials,
   path: string,
 ): Promise<unknown> {
-  const baseUrl = credentials.host || credentials.url || credentials.baseUrl || 'https://cloud.langfuse.com';
-  const url = `${baseUrl.replace(/\/$/, '')}${path}`;
-  const auth = Buffer.from(`${credentials.publicKey}:${credentials.secretKey}`).toString('base64');
+  const url = `${resolveBaseUrl(credentials).replace(/\/$/, '')}${path}`;
+  const auth = Buffer.from(
+    `${credentials.publicKey}:${credentials.secretKey}`,
+  ).toString('base64');
 
   const response = await fetch(url, {
     method: 'GET',
@@ -49,12 +69,33 @@ export async function fetchPromptNames(
       .filter((p) => p.type === 'chat')
       .map((p) => ({ name: p.name, value: p.name }));
   } catch (error) {
-    const baseUrl = credentials.host || credentials.url || credentials.baseUrl || 'https://cloud.langfuse.com';
     throw new NodeOperationError(
       node,
-      `Cannot connect to Langfuse at ${baseUrl}: ${(error as Error).message}`,
+      `Cannot connect to Langfuse at ${resolveBaseUrl(credentials)}: ${(error as Error).message}`,
     );
   }
+}
+
+const MUSTACHE_VAR = /\{\{\s*([A-Za-z_][\w]*)\s*\}\}/g;
+
+export function extractVariableNames(content: string): string[] {
+  if (!content) return [];
+  const found = new Set<string>();
+  let match: RegExpExecArray | null;
+  // Reset regex state for safety
+  MUSTACHE_VAR.lastIndex = 0;
+  while ((match = MUSTACHE_VAR.exec(content)) !== null) {
+    found.add(match[1]);
+  }
+  return [...found];
+}
+
+function findMessageContent(
+  messages: Array<{ role?: string; content?: string; type?: string }>,
+  role: string,
+): string | undefined {
+  const msg = messages.find((m) => m.role === role && typeof m.content === 'string');
+  return msg?.content;
 }
 
 export async function fetchPrompt(
@@ -62,34 +103,91 @@ export async function fetchPrompt(
   promptName: string,
   node: INode,
 ): Promise<LangfusePromptResult> {
+  let promptClient: ChatPromptClient;
   try {
-    const data = (await langfuseApiRequest(
-      credentials,
-      `/api/public/v2/prompts/${encodeURIComponent(promptName)}`,
-    )) as LangfusePromptResponse;
-
-    if (!data.prompt || data.prompt.length === 0) {
-      throw new Error(`Prompt '${promptName}' has no content`);
-    }
-
-    const systemPrompt = data.prompt.find((p) => p.role === 'system');
-    if (!systemPrompt) {
-      throw new Error(`Prompt '${promptName}' has no system message`);
-    }
-
-    return {
-      systemMessage: systemPrompt.content,
-      modelName: data.config?.model,
-      temperature: data.config?.temperature,
-      promptName: data.name,
-      promptVersion: data.version,
-    };
+    const client = createLangfuseClient(credentials);
+    promptClient = await client.getPrompt(promptName, undefined, { type: 'chat' });
   } catch (error) {
-    if ((error as Error).message.includes('404') || (error as Error).message.includes('Not Found')) {
+    const message = (error as Error).message ?? '';
+    if (message.includes('404') || message.includes('Not Found')) {
       throw new NodeOperationError(node, `Prompt '${promptName}' not found in Langfuse`);
     }
-    throw new NodeOperationError(node, (error as Error).message);
+    throw new NodeOperationError(node, message);
   }
+
+  const promptMessages = promptClient.prompt as Array<{
+    role?: string;
+    content?: string;
+    type?: string;
+  }>;
+
+  if (!promptMessages || promptMessages.length === 0) {
+    throw new NodeOperationError(node, `Prompt '${promptName}' has no content`);
+  }
+
+  const systemMessage = findMessageContent(promptMessages, 'system');
+  if (!systemMessage) {
+    throw new NodeOperationError(node, `Prompt '${promptName}' has no system message`);
+  }
+
+  const userMessage = findMessageContent(promptMessages, 'user');
+
+  // Union of {{vars}} referenced across system + user content.
+  const required = new Set<string>();
+  for (const v of extractVariableNames(systemMessage)) required.add(v);
+  if (userMessage) {
+    for (const v of extractVariableNames(userMessage)) required.add(v);
+  }
+
+  const config = (promptClient.config ?? {}) as {
+    model?: string;
+    temperature?: number;
+  };
+
+  return {
+    systemMessage,
+    userMessage,
+    requiredVariables: [...required],
+    modelName: config.model,
+    temperature: config.temperature,
+    promptName: promptClient.name,
+    promptVersion: promptClient.version,
+    promptClient,
+  };
+}
+
+export function compilePromptMessages(
+  prompt: LangfusePromptResult,
+  variables: Record<string, string>,
+  node: INode,
+): { systemMessage: string; userMessage?: string } {
+  const missing = prompt.requiredVariables.filter(
+    (name) => variables[name] === undefined || variables[name] === '',
+  );
+
+  if (missing.length > 0) {
+    throw new NodeOperationError(
+      node,
+      `Missing prompt variables: ${missing.join(', ')}`,
+      {
+        description:
+          'The selected Langfuse prompt references {{placeholder}} variables that have no value supplied. Add a row under "Prompt Variables" for each missing variable.',
+      },
+    );
+  }
+
+  const compiled = prompt.promptClient.compile(variables) as Array<{
+    role?: string;
+    content?: string;
+  }>;
+
+  const compiledSystem = findMessageContent(compiled, 'system') ?? prompt.systemMessage;
+  const compiledUser = findMessageContent(compiled, 'user');
+
+  return {
+    systemMessage: compiledSystem,
+    userMessage: compiledUser,
+  };
 }
 
 export async function fetchProjectName(
@@ -109,11 +207,10 @@ export function createLangfuseHandler(
   credentials: LangfuseCredentials,
   metadata: LangfuseMetadata,
 ): CallbackHandler {
-  const baseUrl = credentials.host || credentials.url || credentials.baseUrl || 'https://cloud.langfuse.com';
   return new CallbackHandler({
     publicKey: credentials.publicKey,
     secretKey: credentials.secretKey,
-    baseUrl,
+    baseUrl: resolveBaseUrl(credentials),
     sessionId: metadata.sessionId,
     userId: metadata.userId,
     metadata: metadata.customMetadata,

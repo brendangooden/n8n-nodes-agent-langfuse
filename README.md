@@ -124,12 +124,65 @@ The dropdown fetches all production `chat`-type prompts from your Langfuse proje
 
 > **How model override works:** When you select "From Langfuse", the node creates a new LLM instance using the same provider and API key from your connected Chat Model, but with the model name from Langfuse. For example, if your Chat Model is configured with OpenRouter and `gpt-4.1-mini`, but your Langfuse prompt has `model: "openai/gpt-5-nano"`, the node will call OpenRouter with `gpt-5-nano`. Change models in Langfuse — no workflow changes needed.
 
+### Prompt Variables
+
+Langfuse chat prompts can contain `{{variable}}` placeholders in their `system` and `user` messages. This node lets you supply values for those variables.
+
+| Field | Description |
+|-------|-------------|
+| **Name** | The variable name as it appears between double braces — e.g. `customer_name` for `{{customer_name}}`. |
+| **Value** | The value to substitute. Supports full n8n expression syntax (e.g. `{{ $json.customer }}`). |
+
+The node detects every `{{var}}` referenced by the selected Langfuse prompt. **Missing variables throw a `NodeOperationError`** before any LLM call is made, listing exactly which names need values. Empty-string values count as missing.
+
+#### How the Langfuse user message interacts with Text / chatInput
+
+| Langfuse prompt contains... | Result |
+|---|---|
+| `system` only | Compiled system message is used. `Prompt Type` / `Text` (or `chatInput`) drives the human turn — existing behaviour. |
+| `system` + `user` | Compiled system message is used. **Compiled user message replaces the human turn**; `Prompt Type` / `Text` field is ignored. Map any free-form input via a variable instead (e.g. `Variables: { question: {{ $json.chatInput }} }`). |
+
+**Example A — parameterised system prompt, free-form user input:**
+
+```
+Langfuse prompt:
+  system: "You help customers of {{company}}."
+
+Node config:
+  Variables: [{ name: company, value: Acme }]
+  Prompt Type: Auto
+
+Result:
+  system → "You help customers of Acme."
+  human  → chatInput from previous node (unchanged)
+```
+
+**Example B — fully parameterised prompt:**
+
+```
+Langfuse prompt:
+  system: "You are a support agent."
+  user:   "Ticket {{ticket_id}}: {{question}}"
+
+Node config:
+  Variables: [
+    { name: ticket_id, value: {{ $json.ticketId }} },
+    { name: question,  value: {{ $json.message  }} },
+  ]
+
+Result (chatInput ignored):
+  system → "You are a support agent."
+  human  → "Ticket 4821: Where is my order?"
+```
+
 ### Prompt Type (User Input)
 
 | Option | Description |
 |--------|-------------|
 | **Auto (From Previous Node)** | Reads the `chatInput` field from the previous node's output. Works automatically with Chat Trigger and other AI nodes. |
 | **Define Below** | Write a fixed prompt text in the node. |
+
+> Ignored when the selected Langfuse prompt defines a `user`-role message — see **Prompt Variables** above.
 
 ### Langfuse Metadata
 

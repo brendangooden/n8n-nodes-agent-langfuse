@@ -102,6 +102,45 @@ export class AgentLangfuse implements INodeType {
           },
         },
       },
+      // Prompt Variables (substituted into {{placeholders}} in the Langfuse prompt)
+      {
+        displayName: 'Prompt Variables',
+        name: 'promptVariables',
+        type: 'fixedCollection',
+        typeOptions: { multipleValues: true },
+        default: {},
+        placeholder: 'Add Variable',
+        description:
+          'Values substituted into {{placeholders}} in the Langfuse prompt. If the prompt defines a user message, it replaces the Text/chatInput below.',
+        displayOptions: {
+          show: {
+            promptSource: ['langfuse'],
+          },
+        },
+        options: [
+          {
+            name: 'values',
+            displayName: 'Variables',
+            values: [
+              {
+                displayName: 'Name',
+                name: 'name',
+                type: 'string',
+                default: '',
+                placeholder: 'customer_name',
+                description: 'Variable name as it appears in {{name}}',
+              },
+              {
+                displayName: 'Value',
+                name: 'value',
+                type: 'string',
+                default: '',
+                description: 'Value to substitute. Supports n8n expressions.',
+              },
+            ],
+          },
+        ],
+      },
       // Prompt Type (user input)
       {
         displayName: 'Prompt Type',
@@ -112,6 +151,8 @@ export class AgentLangfuse implements INodeType {
           { name: 'Define Below', value: 'define' },
         ],
         default: 'auto',
+        description:
+          'Ignored when the selected Langfuse prompt defines a user message — that user message becomes the human turn.',
       },
       {
         displayName: 'Text',

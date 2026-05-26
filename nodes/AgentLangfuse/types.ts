@@ -1,3 +1,5 @@
+import type { ChatPromptClient } from 'langfuse';
+
 export interface LangfuseCredentials {
   host?: string;
   url?: string;
@@ -9,10 +11,18 @@ export interface LangfuseCredentials {
 
 export interface LangfusePromptResult {
   systemMessage: string;
+  userMessage?: string;
+  requiredVariables: string[];
   modelName?: string;
   temperature?: number;
   promptName: string;
   promptVersion: number;
+  promptClient: ChatPromptClient;
+}
+
+export interface PromptVariableEntry {
+  name: string;
+  value: string;
 }
 
 export interface LangfuseMetadata {

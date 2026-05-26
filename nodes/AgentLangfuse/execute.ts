@@ -10,8 +10,18 @@ import { NodeOperationError, jsonParse, sleep } from 'n8n-workflow';
 import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import { z } from 'zod';
 
-import { createLangfuseHandler, fetchProjectName, fetchPrompt, flushHandler } from './langfuse';
-import type { LangfuseCredentials, LangfuseMetadata } from './types';
+import {
+  compilePromptMessages,
+  createLangfuseHandler,
+  fetchProjectName,
+  fetchPrompt,
+  flushHandler,
+} from './langfuse';
+import type {
+  LangfuseCredentials,
+  LangfuseMetadata,
+  PromptVariableEntry,
+} from './types';
 
 const SYSTEM_MESSAGE = 'You are a helpful assistant';
 
@@ -608,16 +618,53 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
     const batchPromises = batch.map(async (_item, batchItemIndex) => {
       const itemIndex = i + batchItemIndex;
 
-      // Get user input
-      const input = getPromptInputByType({
-        ctx: this,
-        i: itemIndex,
-        inputKey: 'text',
-        promptTypeKey: 'promptType',
-      });
+      // ---------------------------------------------------------------
+      // Compile Langfuse prompt with variables (per-item: expressions in
+      // variable values resolve against the current item).
+      // ---------------------------------------------------------------
+      let compiledSystemMessage: string | undefined;
+      let compiledUserMessage: string | undefined;
 
-      if (input === undefined) {
-        throw new NodeOperationError(this.getNode(), 'The "text" parameter is empty.');
+      if (langfusePromptResult) {
+        const rawVars = this.getNodeParameter(
+          'promptVariables.values',
+          itemIndex,
+          [],
+        ) as PromptVariableEntry[];
+
+        const variables: Record<string, string> = {};
+        for (const entry of rawVars) {
+          if (entry?.name) {
+            variables[entry.name] = entry.value ?? '';
+          }
+        }
+
+        const compiled = compilePromptMessages(
+          langfusePromptResult,
+          variables,
+          this.getNode(),
+        );
+        compiledSystemMessage = compiled.systemMessage;
+        compiledUserMessage = compiled.userMessage;
+      }
+
+      // Get user input. When the Langfuse prompt defines a user-role
+      // message, that compiled content replaces the Text/chatInput field
+      // — Langfuse-defined prompts own the human turn.
+      let input: string | undefined;
+      if (compiledUserMessage !== undefined) {
+        input = compiledUserMessage;
+      } else {
+        input = getPromptInputByType({
+          ctx: this,
+          i: itemIndex,
+          inputKey: 'text',
+          promptTypeKey: 'promptType',
+        });
+
+        if (input === undefined) {
+          throw new NodeOperationError(this.getNode(), 'The "text" parameter is empty.');
+        }
       }
 
       // Get output parser and tools
@@ -692,8 +739,11 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
       // Build system message (from Langfuse or from options)
       // -------------------------------------------------------------------
       let systemMessage = options.systemMessage as string | undefined;
-      if (langfusePromptResult) {
-        // Langfuse prompt overrides the system message
+      if (compiledSystemMessage !== undefined) {
+        // Langfuse prompt (with vars substituted) overrides the system message
+        systemMessage = compiledSystemMessage;
+      } else if (langfusePromptResult) {
+        // Fallback safety net — shouldn't hit when promptSource=langfuse
         systemMessage = langfusePromptResult.systemMessage;
       }
 
