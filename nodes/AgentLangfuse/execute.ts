@@ -17,11 +17,7 @@ import {
   fetchPrompt,
   flushHandler,
 } from './langfuse';
-import type {
-  LangfuseCredentials,
-  LangfuseMetadata,
-  PromptVariableEntry,
-} from './types';
+import type { LangfuseCredentials, LangfuseMetadata } from './types';
 
 const SYSTEM_MESSAGE = 'You are a helpful assistant';
 
@@ -626,17 +622,15 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
       let compiledUserMessage: string | undefined;
 
       if (langfusePromptResult) {
-        const rawVars = this.getNodeParameter(
-          'promptVariables.values',
+        const mapper = this.getNodeParameter(
+          'promptVariablesUi',
           itemIndex,
-          [],
-        ) as PromptVariableEntry[];
+          {},
+        ) as { value?: Record<string, unknown> | null };
 
         const variables: Record<string, string> = {};
-        for (const entry of rawVars) {
-          if (entry?.name) {
-            variables[entry.name] = entry.value ?? '';
-          }
+        for (const [key, value] of Object.entries(mapper?.value ?? {})) {
+          variables[key] = value == null ? '' : String(value);
         }
 
         const compiled = compilePromptMessages(

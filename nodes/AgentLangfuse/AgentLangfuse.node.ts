@@ -4,11 +4,12 @@ import type {
   INodeType,
   INodeTypeDescription,
   INodePropertyOptions,
+  ResourceMapperFields,
 } from 'n8n-workflow';
 import { NodeConnectionTypes } from 'n8n-workflow';
 
 import { toolsAgentExecute } from './execute';
-import { fetchPromptNames } from './langfuse';
+import { fetchPrompt, fetchPromptNames } from './langfuse';
 import type { LangfuseCredentials } from './types';
 
 export class AgentLangfuse implements INodeType {
@@ -102,44 +103,31 @@ export class AgentLangfuse implements INodeType {
           },
         },
       },
-      // Prompt Variables (substituted into {{placeholders}} in the Langfuse prompt)
+      // Prompt Variables (auto-loaded from the selected Langfuse prompt's {{placeholders}})
       {
         displayName: 'Prompt Variables',
-        name: 'promptVariables',
-        type: 'fixedCollection',
-        typeOptions: { multipleValues: true },
-        default: {},
-        placeholder: 'Add Variable',
+        name: 'promptVariablesUi',
+        type: 'resourceMapper',
+        default: { mappingMode: 'defineBelow', value: null },
+        noDataExpression: true,
         description:
-          'Values substituted into {{placeholders}} in the Langfuse prompt. If the prompt defines a user message, it replaces the Text/chatInput below.',
+          'Values substituted into {{placeholders}} in the Langfuse prompt. Fields auto-load from the selected prompt; values support n8n expressions. If the prompt defines a user message, it replaces the Text/chatInput below.',
         displayOptions: {
           show: {
             promptSource: ['langfuse'],
           },
         },
-        options: [
-          {
-            name: 'values',
-            displayName: 'Variables',
-            values: [
-              {
-                displayName: 'Name',
-                name: 'name',
-                type: 'string',
-                default: '',
-                placeholder: 'customer_name',
-                description: 'Variable name as it appears in {{name}}',
-              },
-              {
-                displayName: 'Value',
-                name: 'value',
-                type: 'string',
-                default: '',
-                description: 'Value to substitute. Supports n8n expressions.',
-              },
-            ],
+        typeOptions: {
+          loadOptionsDependsOn: ['langfusePrompt'],
+          resourceMapper: {
+            resourceMapperMethod: 'getPromptVariables',
+            mode: 'add',
+            fieldWords: { singular: 'variable', plural: 'variables' },
+            addAllFields: true,
+            multiKeyMatch: false,
+            supportAutoMap: false,
           },
-        ],
+        },
       },
       // Prompt Type (user input)
       {
@@ -304,6 +292,34 @@ export class AgentLangfuse implements INodeType {
           'langfuseApi',
         )) as unknown as LangfuseCredentials;
         return fetchPromptNames(credentials, this.getNode());
+      },
+    },
+    resourceMapping: {
+      async getPromptVariables(
+        this: ILoadOptionsFunctions,
+      ): Promise<ResourceMapperFields> {
+        const promptName = this.getNodeParameter(
+          'langfusePrompt',
+          undefined,
+        ) as string;
+        if (!promptName) {
+          return { fields: [] };
+        }
+        const credentials = (await this.getCredentials(
+          'langfuseApi',
+        )) as unknown as LangfuseCredentials;
+        const result = await fetchPrompt(credentials, promptName, this.getNode());
+        return {
+          fields: result.requiredVariables.map((name) => ({
+            id: name,
+            displayName: name,
+            required: true,
+            display: true,
+            defaultMatch: false,
+            type: 'string',
+          })),
+          emptyFieldsNotice: 'This Langfuse prompt has no {{variables}}.',
+        };
       },
     },
   };

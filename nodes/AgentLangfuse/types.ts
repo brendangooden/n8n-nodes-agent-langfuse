@@ -20,11 +20,6 @@ export interface LangfusePromptResult {
   promptClient: ChatPromptClient;
 }
 
-export interface PromptVariableEntry {
-  name: string;
-  value: string;
-}
-
 export interface LangfuseMetadata {
   sessionId?: string;
   userId?: string;

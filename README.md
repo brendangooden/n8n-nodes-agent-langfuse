@@ -126,21 +126,21 @@ The dropdown fetches all production `chat`-type prompts from your Langfuse proje
 
 ### Prompt Variables
 
-Langfuse chat prompts can contain `{{variable}}` placeholders in their `system` and `user` messages. This node lets you supply values for those variables.
+Langfuse chat prompts can contain `{{variable}}` placeholders in their `system` and `user` messages. The node reads the selected prompt and **auto-populates one input field per `{{variable}}`** — no need to type variable names by hand.
 
-| Field | Description |
-|-------|-------------|
-| **Name** | The variable name as it appears between double braces — e.g. `customer_name` for `{{customer_name}}`. |
-| **Value** | The value to substitute. Supports full n8n expression syntax (e.g. `{{ $json.customer }}`). |
+- Select a Langfuse prompt, then open the **Prompt Variables** mapper. It lists every `{{var}}` referenced by that prompt's `system` and `user` messages.
+- Each value supports full n8n expression syntax (e.g. `{{ $json.customer }}`).
+- If you change the selected prompt, click the mapper's **refresh** icon to reload the field list for the new prompt.
+- If the prompt has no `{{variables}}`, the mapper shows a notice and there's nothing to fill in.
 
-The node detects every `{{var}}` referenced by the selected Langfuse prompt. **Missing variables throw a `NodeOperationError`** before any LLM call is made, listing exactly which names need values. Empty-string values count as missing.
+**Missing variables throw a `NodeOperationError`** before any LLM call is made, listing exactly which names need values. Empty-string values count as missing — this runtime check is the real guard (the mapper marks fields required but won't hard-block execution).
 
 #### How the Langfuse user message interacts with Text / chatInput
 
 | Langfuse prompt contains... | Result |
 |---|---|
 | `system` only | Compiled system message is used. `Prompt Type` / `Text` (or `chatInput`) drives the human turn — existing behaviour. |
-| `system` + `user` | Compiled system message is used. **Compiled user message replaces the human turn**; `Prompt Type` / `Text` field is ignored. Map any free-form input via a variable instead (e.g. `Variables: { question: {{ $json.chatInput }} }`). |
+| `system` + `user` | Compiled system message is used. **Compiled user message replaces the human turn**; `Prompt Type` / `Text` field is ignored. Map any free-form input via a variable instead (e.g. set the `question` field to `{{ $json.chatInput }}`). |
 
 **Example A — parameterised system prompt, free-form user input:**
 
@@ -149,7 +149,7 @@ Langfuse prompt:
   system: "You help customers of {{company}}."
 
 Node config:
-  Variables: [{ name: company, value: Acme }]
+  Prompt Variables:  company = Acme
   Prompt Type: Auto
 
 Result:
@@ -165,10 +165,9 @@ Langfuse prompt:
   user:   "Ticket {{ticket_id}}: {{question}}"
 
 Node config:
-  Variables: [
-    { name: ticket_id, value: {{ $json.ticketId }} },
-    { name: question,  value: {{ $json.message  }} },
-  ]
+  Prompt Variables:
+    ticket_id = {{ $json.ticketId }}
+    question  = {{ $json.message  }}
 
 Result (chatInput ignored):
   system → "You are a support agent."
