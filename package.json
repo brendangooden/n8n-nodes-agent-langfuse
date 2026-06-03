@@ -1,7 +1,7 @@
 {
-  "name": "n8n-nodes-agent-langfuse",
-  "version": "0.1.0",
-  "description": "n8n AI Agent node with native Langfuse integration: tracing + prompt management",
+  "name": "@brendangubt/n8n-nodes-agent-langfuse",
+  "version": "0.2.0",
+  "description": "n8n AI Agent node with native Langfuse integration: tracing + prompt management. Fork of n8n-nodes-agent-langfuse with prompt variable support.",
   "keywords": [
     "n8n-community-node-package",
     "langfuse",
@@ -12,15 +12,20 @@
   ],
   "license": "MIT",
   "author": {
-    "name": "diward",
-    "email": "edu.diward@gmail.com"
+    "name": "Brendan Gooden"
   },
+  "contributors": [
+    {
+      "name": "diward",
+      "email": "edu.diward@gmail.com"
+    }
+  ],
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Diward/n8n-nodes-agent-langfuse.git"
+    "url": "https://github.com/brendangooden/n8n-nodes-agent-langfuse.git"
   },
   "engines": {
     "node": ">=20.15"
@@ -28,7 +33,7 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc && npm run copy-icons",
-    "copy-icons": "mkdir -p dist/nodes/AgentLangfuse/icons && cp nodes/AgentLangfuse/icons/*.svg dist/nodes/AgentLangfuse/icons/",
+    "copy-icons": "node -e \"const fs=require('fs'),s='nodes/AgentLangfuse/icons',d='dist/nodes/AgentLangfuse/icons';fs.mkdirSync(d,{recursive:true});fs.readdirSync(s).filter(f=>f.endsWith('.svg')).forEach(f=>fs.copyFileSync(s+'/'+f,d+'/'+f))\"",
     "dev": "tsc --watch",
     "prepublishOnly": "npm run build"
   },

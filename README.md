@@ -1,8 +1,10 @@
-# n8n-nodes-agent-langfuse
+# @brendangubt/n8n-nodes-agent-langfuse
 
-[![npm version](https://img.shields.io/npm/v/n8n-nodes-agent-langfuse)](https://www.npmjs.com/package/n8n-nodes-agent-langfuse)
-[![npm downloads](https://img.shields.io/npm/dm/n8n-nodes-agent-langfuse)](https://www.npmjs.com/package/n8n-nodes-agent-langfuse)
-[![license](https://img.shields.io/npm/l/n8n-nodes-agent-langfuse)](LICENSE)
+[![npm version](https://img.shields.io/npm/v/%40brendangubt%2Fn8n-nodes-agent-langfuse)](https://www.npmjs.com/package/@brendangubt/n8n-nodes-agent-langfuse)
+[![npm downloads](https://img.shields.io/npm/dm/%40brendangubt%2Fn8n-nodes-agent-langfuse)](https://www.npmjs.com/package/@brendangubt/n8n-nodes-agent-langfuse)
+[![license](https://img.shields.io/npm/l/%40brendangubt%2Fn8n-nodes-agent-langfuse)](LICENSE)
+
+> Fork of [n8n-nodes-agent-langfuse](https://github.com/Diward/n8n-nodes-agent-langfuse) by [diward](https://github.com/Diward), adding Langfuse prompt variable substitution and auto-loaded prompt variables.
 
 An n8n community node that brings **AI Agent execution** and **[Langfuse](https://langfuse.com) observability** together in a single node. Select prompts from Langfuse, override models dynamically, and get full tracing — all without extra nodes in your workflow.
 
@@ -35,7 +37,7 @@ If you use n8n's AI Agent with Langfuse, you currently need:
 
 ## Quick Start
 
-1. **Install** the node: Settings > Community Nodes > Install > `n8n-nodes-agent-langfuse`
+1. **Install** the node: Settings > Community Nodes > Install > `@brendangubt/n8n-nodes-agent-langfuse`
 2. **Create** a Langfuse API credential with your Base URL, Public Key, and Secret Key
 3. **Add** "AI Agent + Langfuse" to your workflow and connect a Chat Model
 4. **Select** a Langfuse prompt from the dropdown
@@ -59,14 +61,14 @@ If you use n8n's AI Agent with Langfuse, you currently need:
 
 1. Go to **Settings > Community Nodes**
 2. Click **Install**
-3. Enter `n8n-nodes-agent-langfuse`
+3. Enter `@brendangubt/n8n-nodes-agent-langfuse`
 4. Click **Install**
 
 ### Manual Installation
 
 ```bash
 cd ~/.n8n/nodes
-npm install n8n-nodes-agent-langfuse
+npm install @brendangubt/n8n-nodes-agent-langfuse
 # Restart n8n
 ```
 
@@ -331,7 +333,7 @@ Works with any LangChain-compatible Chat Model: OpenAI, OpenRouter, Anthropic, A
 ## Development
 
 ```bash
-git clone https://github.com/Diward/n8n-nodes-agent-langfuse.git
+git clone https://github.com/brendangooden/n8n-nodes-agent-langfuse.git
 cd n8n-nodes-agent-langfuse
 npm install
 npm run build
@@ -352,6 +354,7 @@ Contributions are welcome! Please open an issue first to discuss what you'd like
 
 ## Credits
 
+- Original node by [diward](https://github.com/Diward) — [n8n-nodes-agent-langfuse](https://github.com/Diward/n8n-nodes-agent-langfuse)
 - Built on [LangChain](https://langchain.com) and [Langfuse](https://langfuse.com)
 - Icon: [Lucide](https://lucide.dev) bot icon + [Langfuse](https://lobehub.com/icons/langfuse) logo
 - Inspired by [n8n-nodes-ai-agent-langfuse](https://github.com/rorubyy/n8n-nodes-ai-agent-langfuse) by Wistron DXLab
