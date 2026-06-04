@@ -687,7 +687,10 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
         {},
       ) as Record<string, unknown>;
 
-      const traceName = (rawMetadata.traceName as string) || this.getNode().name;
+      const workflow = this.getWorkflow();
+      const traceName =
+        (rawMetadata.traceName as string) ||
+        `${workflow.name} - ${this.getNode().name}`;
 
       let parsedCustomMetadata: Record<string, unknown> | undefined;
       if (typeof rawMetadata.customMetadata === 'string') {
@@ -703,8 +706,15 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
       }
 
       // Build metadata: auto-populated fields + user's custom metadata
-      // User's custom metadata can override auto fields if needed
-      const autoMetadata: Record<string, unknown> = {};
+      const autoMetadata: Record<string, unknown> = {
+        execution_id: this.getExecutionId(),
+        workflow: {
+          id: workflow.id,
+          name: workflow.name,
+          active: workflow.active,
+        },
+        node: this.getNode().name,
+      };
       if (langfuseProjectName) {
         autoMetadata.project = langfuseProjectName;
       }
@@ -715,9 +725,20 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
         };
       }
 
+      // Auto fields are factual (execution id, workflow, node, project,
+      // prompt version) — they always win over user-supplied custom metadata.
+      const collidingKeys = Object.keys(parsedCustomMetadata ?? {}).filter(
+        (key) => key in autoMetadata,
+      );
+      if (collidingKeys.length > 0) {
+        this.logger.warn(
+          `Langfuse custom metadata keys ignored (reserved for auto-populated values): ${collidingKeys.join(', ')}`,
+        );
+      }
+
       const mergedMetadata = {
-        ...autoMetadata,
         ...(parsedCustomMetadata ?? {}),
+        ...autoMetadata,
       };
 
       const langfuseMetadata: LangfuseMetadata = {

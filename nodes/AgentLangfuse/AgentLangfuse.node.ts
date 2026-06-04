@@ -213,7 +213,7 @@ export class AgentLangfuse implements INodeType {
             type: 'string',
             default: '',
             description:
-              'Override the default trace name. If empty, uses the node name.',
+              'Override the default trace name. If empty, uses "<workflow name> - <node name>".',
           },
           {
             displayName: 'Custom Metadata (JSON)',
