@@ -47,8 +47,10 @@ If you use n8n's AI Agent with Langfuse, you currently need:
 
 - **Langfuse Prompt Selector** — Browse and select production prompts from Langfuse directly in the node UI. No HTTP Request nodes needed.
 - **Model Override** — Use the model and temperature defined in your Langfuse prompt config, or override manually. Switch models by changing Langfuse config — no workflow edits required.
-- **Automatic Tracing** — Every execution is traced to Langfuse with full LLM call details, tool usage, and intermediate steps. The trace name defaults to the **n8n node name**, so naming your node descriptively (e.g., "AI Agent - Selector") makes traces easy to find in Langfuse.
-- **Auto Metadata** — Project name, prompt name, and prompt version are automatically included in every trace. Add your own custom metadata on top.
+- **Prompt Variable Substitution** — `{{variables}}` in your Langfuse prompt auto-load as editable fields in the node. Values support n8n expressions and are validated before any LLM call.
+- **Prompt-Linked Generations** — Each generation is linked to the Langfuse prompt version, so it appears under the prompt's *Generations* tab and feeds its metrics (cost, latency by version).
+- **Automatic Tracing** — Every execution is traced to Langfuse with full LLM call details, tool usage, and intermediate steps. The trace name defaults to `<workflow name> - <node name>`, so traces are easy to disambiguate when you reuse a node across workflows.
+- **Auto Metadata** — Execution ID, workflow info, node name, project, and prompt name/version are automatically included in every trace. Add your own custom metadata on top (reserved keys are listed in the [Langfuse Metadata](#langfuse-metadata) section).
 - **Streaming** — Full streaming support for real-time responses.
 - **Fallback Model** — Configure a backup model that activates if the primary fails.
 - **Batch Processing** — Process multiple items with configurable batch size and delay.
