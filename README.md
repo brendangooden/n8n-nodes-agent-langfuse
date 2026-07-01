@@ -28,8 +28,10 @@ If you use n8n's AI Agent with Langfuse, you currently need:
 |---------|-----------|------------------------|---------------|
 | Agent execution | Yes | No (separate nodes) | Yes |
 | Prompt selector dropdown | Yes | Yes (separate node) | No |
+| Prompt variable substitution (auto-loaded fields) | Yes | No | No |
+| Generation linked to prompt version | Yes | No | No |
 | Model override from prompt config | Yes | N/A | No |
-| Auto metadata (project, prompt, version) | Yes | No | No |
+| Auto metadata (execution, workflow, node, project, prompt) | Yes | No | No |
 | Agent V3 architecture | Yes | N/A | No (V2) |
 | Streaming support | Yes | N/A | Limited |
 | Fallback model | Yes | N/A | Yes |
@@ -47,8 +49,10 @@ If you use n8n's AI Agent with Langfuse, you currently need:
 
 - **Langfuse Prompt Selector** — Browse and select production prompts from Langfuse directly in the node UI. No HTTP Request nodes needed.
 - **Model Override** — Use the model and temperature defined in your Langfuse prompt config, or override manually. Switch models by changing Langfuse config — no workflow edits required.
-- **Automatic Tracing** — Every execution is traced to Langfuse with full LLM call details, tool usage, and intermediate steps. The trace name defaults to the **n8n node name**, so naming your node descriptively (e.g., "AI Agent - Selector") makes traces easy to find in Langfuse.
-- **Auto Metadata** — Project name, prompt name, and prompt version are automatically included in every trace. Add your own custom metadata on top.
+- **Prompt Variable Substitution** — `{{variables}}` in your Langfuse prompt auto-load as editable fields in the node. Values support n8n expressions and are validated before any LLM call.
+- **Prompt-Linked Generations** — Each generation is linked to the Langfuse prompt version, so it appears under the prompt's *Generations* tab and feeds its metrics (cost, latency by version).
+- **Automatic Tracing** — Every execution is traced to Langfuse with full LLM call details, tool usage, and intermediate steps. The trace name defaults to `<workflow name> - <node name>`, so traces are easy to disambiguate when you reuse a node across workflows.
+- **Auto Metadata** — Execution ID, workflow info, node name, project, and prompt name/version are automatically included in every trace. Add your own custom metadata on top (reserved keys are listed in the [Langfuse Metadata](#langfuse-metadata) section).
 - **Streaming** — Full streaming support for real-time responses.
 - **Fallback Model** — Configure a backup model that activates if the primary fails.
 - **Batch Processing** — Process multiple items with configurable batch size and delay.
@@ -191,7 +195,7 @@ Result (chatInput ignored):
 |-------|-------------|
 | **Session ID** | Groups related traces in Langfuse. Supports n8n expressions (e.g., `{{ $json.sessionId }}`). |
 | **User ID** | Identifies the end user. Supports expressions. |
-| **Trace Name** | Custom name for the trace. **Defaults to the n8n node name** — so naming your node "AI Agent - Selector" will make the trace appear as "AI Agent - Selector" in Langfuse. |
+| **Trace Name** | Custom name for the trace. **Defaults to `<workflow name> - <node name>`** — e.g. a node named "AI Agent - Selector" in the workflow "Customer Support" produces the trace name "Customer Support - AI Agent - Selector". |
 | **Custom Metadata (JSON)** | Any additional metadata you want to attach to traces. |
 
 #### Automatic Metadata
@@ -200,29 +204,35 @@ The following fields are **automatically included** in every trace — no config
 
 | Field | Value | Source |
 |-------|-------|--------|
+| `execution_id` | The n8n execution ID | n8n |
+| `workflow.id` | The n8n workflow ID | n8n |
+| `workflow.name` | The n8n workflow name | n8n |
+| `workflow.active` | Whether the workflow is active | n8n |
+| `node` | The node name | n8n |
 | `project` | Your Langfuse project name | Langfuse API |
 | `prompt.name` | The selected prompt name | Langfuse prompt |
 | `prompt.version` | The production version number | Langfuse prompt |
 
-Your custom metadata is merged on top of the automatic fields. You can override any automatic field by including it in your Custom Metadata JSON.
+> **Reserved keys:** `execution_id`, `workflow`, `node`, `project`, and `prompt` are reserved for the auto-populated values above. These fields are factual and always win — if your Custom Metadata JSON includes any of them, those keys are **dropped** and a warning listing the ignored keys is written to the n8n log.
 
 **Example Custom Metadata:**
 ```json
 {
   "env": "prod",
-  "workflow": "{{ $workflow.name }}",
-  "n8n_exec_id": "{{ $execution.id }}"
+  "tenant": "{{ $json.tenantId }}"
 }
 ```
 
 **Resulting trace metadata:**
 ```json
 {
+  "execution_id": "1234",
+  "workflow": { "id": "aB3dE5fG", "name": "Customer Support Agent", "active": true },
+  "node": "AI Agent - Selector",
   "project": "my-project",
   "prompt": { "name": "my-agent", "version": 3 },
   "env": "prod",
-  "workflow": "Customer Support Agent",
-  "n8n_exec_id": 1234
+  "tenant": "acme-corp"
 }
 ```
 
