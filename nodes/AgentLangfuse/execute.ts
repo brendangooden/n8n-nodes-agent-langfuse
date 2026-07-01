@@ -339,6 +339,7 @@ function createAgentExecutor(
   memory: unknown,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   fallbackModel: any,
+  willStream: boolean,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   langfuseHandler?: any,
 ): AgentExecutor {
@@ -348,7 +349,7 @@ function createAgentExecutor(
     llm: model,
     tools,
     prompt,
-    streamRunnable: false,
+    streamRunnable: willStream,
   });
 
   let fallbackAgent;
@@ -357,7 +358,7 @@ function createAgentExecutor(
       llm: fallbackModel,
       tools,
       prompt,
-      streamRunnable: false,
+      streamRunnable: willStream,
     });
   }
 
@@ -370,7 +371,7 @@ function createAgentExecutor(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (runnableAgent as any).singleAction = false;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (runnableAgent as any).streamRunnable = false;
+  (runnableAgent as any).streamRunnable = willStream;
 
   return AgentExecutor.fromAgentAndTools({
     agent: runnableAgent,
@@ -776,6 +777,16 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
       // -------------------------------------------------------------------
       // Create agent executor
       // -------------------------------------------------------------------
+      // Only enable LangChain's streamRunnable when we will actually stream the
+      // response (webhook in streaming mode + the Enable Streaming option). With
+      // streamRunnable off, no on_chat_model_stream token events are emitted, so
+      // the streamEvents() path below yields nothing incremental and the reply
+      // arrives in one lump at the end.
+      const willStream =
+        'isStreaming' in this &&
+        enableStreaming &&
+        (this as IExecuteFunctions).isStreaming();
+
       const executor = createAgentExecutor(
         model,
         wrappedTools,
@@ -784,6 +795,7 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
         outputParser,
         memory,
         fallbackModel,
+        willStream,
       );
 
       // -------------------------------------------------------------------
