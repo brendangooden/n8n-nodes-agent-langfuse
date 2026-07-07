@@ -44,7 +44,7 @@
   "n8n": {
     "n8nNodesApiVersion": 1,
     "credentials": [
-      "dist/credentials/AgentLangfuseApi.credentials.js"
+      "dist/credentials/LangfuseApi.credentials.js"
     ],
     "nodes": [
       "dist/nodes/AgentLangfuse/AgentLangfuse.node.js"
