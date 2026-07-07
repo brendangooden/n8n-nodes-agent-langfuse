@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-08
+
+### Changed
+
+- **Breaking: credential type renamed `langfuseApi` → `agentLangfuseApi`** (displayed as "Agent Langfuse API"). n8n credential type names are a global namespace across community packages, and the official `@langfuse/n8n-nodes-langfuse` package also registers `langfuseApi` with a different schema (`host` instead of `url`). With both installed, the winning schema is load-order dependent per process — the credential test could pass on the main instance while every execution on a queue-mode worker silently sent requests to `https://cloud.langfuse.com` and failed with 401. The namespaced type eliminates the collision.
+  **Migration:** after upgrading, create a new "Agent Langfuse API" credential with the same Base URL and keys, and select it in each AI Agent + Langfuse node (the old `langfuseApi` credential no longer matches this node's credential type).
+
+### Fixed
+
+- `resolveBaseUrl` now prefers the credential's own `url` field over `host`. Previously `host` won, so a `host` default injected by the colliding official schema silently overrode the user's configured self-hosted URL (see the README troubleshooting entry for the 401 "Invalid credentials. Confirm that you've configured the correct host." fingerprint). Covered by unit tests (`npm test`).
+
+## [0.3.1] - 2026-07-01
+
+### Fixed
+
+- Streaming: token deltas are emitted again by gating `streamRunnable` on the stream decision (previously intermediate chunks were not streamed to the chat UI).
+
 ## [0.2.1] - 2026-06-05
 
 ### Changed
@@ -42,6 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configurable session ID, user ID, custom metadata, and trace name.
 - Streaming, fallback model, batching, output parser, and memory support.
 
+[0.4.0]: https://github.com/brendangooden/n8n-nodes-agent-langfuse/compare/v0.3.1...v0.4.0
+[0.3.1]: https://github.com/brendangooden/n8n-nodes-agent-langfuse/compare/v0.2.1...v0.3.1
 [0.2.1]: https://github.com/Diward/n8n-nodes-agent-langfuse/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Diward/n8n-nodes-agent-langfuse/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Diward/n8n-nodes-agent-langfuse/releases/tag/v0.1.0

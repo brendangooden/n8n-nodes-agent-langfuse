@@ -83,7 +83,7 @@ npm install @brendangubt/n8n-nodes-agent-langfuse
 ![Credential setup](assets/credential-setup.png)
 
 1. In n8n, go to **Credentials > New Credential**
-2. Search for **Langfuse API**
+2. Search for **Agent Langfuse API**
 3. Fill in:
    - **Base URL**: Your Langfuse instance URL (e.g., `https://cloud.langfuse.com` or your self-hosted URL)
    - **Public Key**: Your Langfuse project public key
@@ -327,6 +327,11 @@ Works with any LangChain-compatible Chat Model: OpenAI, OpenRouter, Anthropic, A
 - Verify your Base URL, Public Key, and Secret Key in the credential
 - Click "Test" in the credential editor to check connectivity
 - For self-hosted Langfuse: ensure n8n can reach the URL (check Docker networking, firewalls)
+
+### 401 "Invalid credentials. Confirm that you've configured the correct host." (self-hosted)
+That error body comes from **Langfuse Cloud**, so if you use a self-hosted instance it means requests are going to `cloud.langfuse.com` instead of your Base URL. This happens when the official `@langfuse/n8n-nodes-langfuse` package is also installed and versions of this node **before 0.4.0** are in use: both packages registered a credential type named `langfuseApi` with different field names, and whichever schema loads last wins — per process, so the credential test can pass on the main instance while executions 401 on queue-mode workers, and behaviour can flip on any restart. Fixes:
+- Upgrade to **0.4.0+**, which uses its own credential type (`agentLangfuseApi`) and is immune to the collision
+- Or uninstall one of the two packages and restart n8n (all processes, including workers)
 
 ### Prompt dropdown is empty
 - Check that your Langfuse project has `chat`-type prompts (not `text`-type)
