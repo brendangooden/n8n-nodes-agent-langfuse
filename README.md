@@ -326,6 +326,11 @@ Works with any LangChain-compatible Chat Model: OpenAI, OpenRouter, Anthropic, A
 - Click "Test" in the credential editor to check connectivity
 - For self-hosted Langfuse: ensure n8n can reach the URL (check Docker networking, firewalls)
 
+### 401 "Invalid credentials. Confirm that you've configured the correct host." (self-hosted)
+That error body comes from **Langfuse Cloud**, so if you use a self-hosted instance it means requests are going to `cloud.langfuse.com` instead of your Base URL. This happens when the official `@langfuse/n8n-nodes-langfuse` package is also installed: both packages register a credential type named `langfuseApi` with different field names (`url` here, `host` there), and whichever schema loads last wins — per process, so the credential test can pass on the main instance while executions 401 on queue-mode workers, and behaviour can flip on any restart. When the official schema wins, n8n injects its `host` default (`https://cloud.langfuse.com`) into this node's stored credential data. Fixes:
+- Upgrade to a version with the `resolveBaseUrl` precedence fix, where the stored `url` always beats an injected `host` default
+- Uninstall one of the two packages and restart n8n (all processes, including workers) — recommended, as the shared credential type name also makes the credential edit form and credential test flip between the two schemas
+
 ### Prompt dropdown is empty
 - Check that your Langfuse project has `chat`-type prompts (not `text`-type)
 - Verify the credential has access to the correct project

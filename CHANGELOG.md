@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `resolveBaseUrl` now prefers the credential's own `url` field over `host`. The official `@langfuse/n8n-nodes-langfuse` package registers a credential type with the same name (`langfuseApi`) but a different schema (`host` instead of `url`, defaulting to `https://cloud.langfuse.com`). With both packages installed, the winning schema is load-order dependent per n8n process; when the official schema wins, n8n injects its `host` default into data stored by this node, and `host` previously beat the user's configured `url` — silently sending every prompt fetch and trace to Langfuse Cloud, which 401s for self-hosted keys. Precedence is now `url > host > baseUrl`, covered by unit tests (`npm test`). See the README troubleshooting entry for the 401 fingerprint.
+
 ## [0.2.1] - 2026-06-05
 
 ### Changed
