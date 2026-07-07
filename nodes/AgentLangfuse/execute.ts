@@ -563,7 +563,7 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
   let langfuseProjectName: string | undefined;
 
   if (promptSource === 'langfuse') {
-    const langfuseCreds = (await this.getCredentials('langfuseApi')) as unknown as LangfuseCredentials;
+    const langfuseCreds = (await this.getCredentials('agentLangfuseApi')) as unknown as LangfuseCredentials;
     const promptName = this.getNodeParameter('langfusePrompt', 0) as string;
 
     // Fetch prompt and project name in parallel
@@ -680,7 +680,7 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
       // -------------------------------------------------------------------
       // Langfuse handler (per item — different sessionId/userId possible)
       // -------------------------------------------------------------------
-      const langfuseCreds = (await this.getCredentials('langfuseApi')) as unknown as LangfuseCredentials;
+      const langfuseCreds = (await this.getCredentials('agentLangfuseApi')) as unknown as LangfuseCredentials;
 
       const rawMetadata = this.getNodeParameter(
         'langfuseMetadata',
