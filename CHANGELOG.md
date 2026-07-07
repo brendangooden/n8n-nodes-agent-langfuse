@@ -7,14 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] - 2026-07-08
 
-### Changed
-
-- **Breaking: credential type renamed `langfuseApi` → `agentLangfuseApi`** (displayed as "Agent Langfuse API"). n8n credential type names are a global namespace across community packages, and the official `@langfuse/n8n-nodes-langfuse` package also registers `langfuseApi` with a different schema (`host` instead of `url`). With both installed, the winning schema is load-order dependent per process — the credential test could pass on the main instance while every execution on a queue-mode worker silently sent requests to `https://cloud.langfuse.com` and failed with 401. The namespaced type eliminates the collision.
-  **Migration:** after upgrading, create a new "Agent Langfuse API" credential with the same Base URL and keys, and select it in each AI Agent + Langfuse node (the old `langfuseApi` credential no longer matches this node's credential type).
-
 ### Fixed
 
-- `resolveBaseUrl` now prefers the credential's own `url` field over `host`. Previously `host` won, so a `host` default injected by the colliding official schema silently overrode the user's configured self-hosted URL (see the README troubleshooting entry for the 401 "Invalid credentials. Confirm that you've configured the correct host." fingerprint). Covered by unit tests (`npm test`).
+- `resolveBaseUrl` now prefers the credential's own `url` field over `host`. The official `@langfuse/n8n-nodes-langfuse` package registers a credential type with the same name (`langfuseApi`) but a different schema (`host` instead of `url`, defaulting to `https://cloud.langfuse.com`). With both packages installed, the winning schema is load-order dependent per n8n process; when the official schema wins, n8n injects its `host` default into data stored by this node, and `host` previously beat the user's configured `url` — silently sending every prompt fetch and trace to Langfuse Cloud, which 401s for self-hosted keys. The credential test could pass on the main instance while every execution on a queue-mode worker failed. Precedence is now `url > host > baseUrl` and is covered by unit tests (`npm test`). See the README troubleshooting entry for the 401 "Invalid credentials. Confirm that you've configured the correct host." fingerprint; avoid installing both packages on one instance if you can.
 
 ## [0.3.1] - 2026-07-01
 
