@@ -35,6 +35,7 @@
     "build": "tsc && npm run copy-icons",
     "copy-icons": "node -e \"const fs=require('fs'),s='nodes/AgentLangfuse/icons',d='dist/nodes/AgentLangfuse/icons';fs.mkdirSync(d,{recursive:true});fs.readdirSync(s).filter(f=>f.endsWith('.svg')).forEach(f=>fs.copyFileSync(s+'/'+f,d+'/'+f))\"",
     "dev": "tsc --watch",
+    "test": "npm run build && node --test \"test/**/*.test.js\"",
     "prepublishOnly": "npm run build"
   },
   "files": [

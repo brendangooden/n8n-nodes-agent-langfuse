@@ -9,10 +9,17 @@ import type {
   LangfusePromptResult,
 } from './types';
 
-function resolveBaseUrl(credentials: LangfuseCredentials): string {
+export function resolveBaseUrl(credentials: LangfuseCredentials): string {
+  // `url` (this credential's own field) must win over `host`. When another
+  // installed package also registers a credential type named `langfuseApi`
+  // (e.g. @langfuse/n8n-nodes-langfuse, whose `host` field defaults to
+  // https://cloud.langfuse.com), n8n may apply THAT schema's defaults to data
+  // stored by this one, injecting a `host` the user never entered. Trusting
+  // `host` first then silently redirects all requests away from the user's
+  // configured instance.
   return (
-    credentials.host ||
     credentials.url ||
+    credentials.host ||
     credentials.baseUrl ||
     'https://cloud.langfuse.com'
   );
