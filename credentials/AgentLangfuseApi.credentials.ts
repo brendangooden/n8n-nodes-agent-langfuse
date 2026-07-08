@@ -5,9 +5,9 @@ import type {
   INodeProperties,
 } from 'n8n-workflow';
 
-export class LangfuseApi implements ICredentialType {
-  name = 'langfuseApi';
-  displayName = 'Langfuse API';
+export class AgentLangfuseApi implements ICredentialType {
+  name = 'agentLangfuseApi';
+  displayName = 'Agent Langfuse API';
   documentationUrl = 'https://langfuse.com/docs';
 
   properties: INodeProperties[] = [

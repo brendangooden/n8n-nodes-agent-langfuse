@@ -54,7 +54,7 @@ export class AgentLangfuse implements INodeType {
       )
     }}`,
     outputs: [NodeConnectionTypes.Main],
-    credentials: [{ name: 'langfuseApi', required: true }],
+    credentials: [{ name: 'agentLangfuseApi', required: true }],
     properties: [
       // Prompt Source
       {
@@ -289,7 +289,7 @@ export class AgentLangfuse implements INodeType {
         this: ILoadOptionsFunctions,
       ): Promise<INodePropertyOptions[]> {
         const credentials = (await this.getCredentials(
-          'langfuseApi',
+          'agentLangfuseApi',
         )) as unknown as LangfuseCredentials;
         return fetchPromptNames(credentials, this.getNode());
       },
@@ -306,7 +306,7 @@ export class AgentLangfuse implements INodeType {
           return { fields: [] };
         }
         const credentials = (await this.getCredentials(
-          'langfuseApi',
+          'agentLangfuseApi',
         )) as unknown as LangfuseCredentials;
         const result = await fetchPrompt(credentials, promptName, this.getNode());
         return {

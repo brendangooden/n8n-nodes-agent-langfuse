@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-08
+
+### Added
+
+- **Google Gemini / Vertex AI tool support.** With a Gemini or Vertex chat model, attaching any tool made every run fail with `400 INVALID_ARGUMENT`: Gemini validates `functionDeclarations` far more strictly than OpenAI/Anthropic and rejects JSON-schema keywords those providers silently ignore (`additionalProperties`, `$schema`, string `format`s such as `uri`/`uuid`, and `anyOf`/`oneOf`/`allOf` unions), all of which MCP-generated tool schemas routinely contain. A new `geminiSchema` module rewrites each tool's advertised schema into a Gemini-safe JSON Schema, applied only when the connected model routes to Google (a strict no-op for OpenAI/Anthropic). The tool still executes normally; only the schema sent to the model changes. Verified against the live Gemini API (`gemini-2.5-flash`): a raw MCP-style schema is rejected with `400 INVALID_ARGUMENT` (`Unknown name "additionalProperties"`), and the same schema after sanitization returns `200` with a valid tool call. `isGeminiModel` was confirmed to fire on the real `@langchain/google-genai` and `@langchain/google-vertexai` chat model classes and to stay off for OpenAI/OpenRouter. Note that current `@langchain/google-genai` also sanitizes tool schemas in its own bind path, so the raw 400 is most visible on the Vertex client path this PR originally targeted; the sanitizer is a correct, idempotent safeguard on both. ([#5](https://github.com/Diward/n8n-nodes-agent-langfuse/pull/5), thanks [@harmoney-stella](https://github.com/harmoney-stella))
+
+### Changed
+
+- **BREAKING — credential type renamed `langfuseApi` → `agentLangfuseApi`** (display name "Agent Langfuse API"). The old name collided with other installed Langfuse community packages that register a credential under the same global `langfuseApi` key with a different schema; n8n indexes credential types by name, so whichever definition won the load order could overwrite this node's stored `url` with its own `host` default (`https://cloud.langfuse.com`), silently redirecting prompt fetches and traces to Langfuse Cloud (401 for self-hosted keys). A unique name removes the collision at the source. 0.2.2's `resolveBaseUrl` read-precedence fix (`url > host`) remains as defense in depth.
+
+  **Migration:** after updating, create a new credential of type **"Agent Langfuse API"** with your Base URL, Public Key and Secret Key, then re-select it on each AI Agent + Langfuse node. n8n community nodes have no automatic credential migration, so the old credential will not carry over.
+
 ## [0.2.2] - 2026-07-08
 
 ### Fixed

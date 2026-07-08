@@ -17,6 +17,7 @@ import {
   fetchPrompt,
   flushHandler,
 } from './langfuse';
+import { isGeminiModel, sanitizeToolsForGemini } from './geminiSchema';
 import type { LangfuseCredentials, LangfuseMetadata } from './types';
 
 const SYSTEM_MESSAGE = 'You are a helpful assistant';
@@ -563,7 +564,7 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
   let langfuseProjectName: string | undefined;
 
   if (promptSource === 'langfuse') {
-    const langfuseCreds = (await this.getCredentials('langfuseApi')) as unknown as LangfuseCredentials;
+    const langfuseCreds = (await this.getCredentials('agentLangfuseApi')) as unknown as LangfuseCredentials;
     const promptName = this.getNodeParameter('langfusePrompt', 0) as string;
 
     // Fetch prompt and project name in parallel
@@ -677,10 +678,18 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
         wrappedTools.push(t);
       }
 
+      // Gemini/Vertex rejects JSON-schema keywords that OpenAI/Anthropic
+      // tolerate (additionalProperties, string formats, anyOf/oneOf, ...).
+      // Sanitize tool schemas so Vertex accepts the functionDeclarations.
+      // No-op for non-Google models, so OpenAI/Anthropic behaviour is unchanged.
+      if (isGeminiModel(model)) {
+        sanitizeToolsForGemini(wrappedTools);
+      }
+
       // -------------------------------------------------------------------
       // Langfuse handler (per item — different sessionId/userId possible)
       // -------------------------------------------------------------------
-      const langfuseCreds = (await this.getCredentials('langfuseApi')) as unknown as LangfuseCredentials;
+      const langfuseCreds = (await this.getCredentials('agentLangfuseApi')) as unknown as LangfuseCredentials;
 
       const rawMetadata = this.getNodeParameter(
         'langfuseMetadata',
