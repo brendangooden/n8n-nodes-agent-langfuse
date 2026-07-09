@@ -38,7 +38,7 @@ If you use n8n's AI Agent with Langfuse, you currently need:
 ## Quick Start
 
 1. **Install** the node: Settings > Community Nodes > Install > `n8n-nodes-agent-langfuse`
-2. **Create** a Langfuse API credential with your Base URL, Public Key, and Secret Key
+2. **Create** an **Agent Langfuse API** credential with your Base URL, Public Key, and Secret Key
 3. **Add** "AI Agent + Langfuse" to your workflow and connect a Chat Model
 4. **Select** a Langfuse prompt from the dropdown
 5. **Execute** — the agent runs with your prompt and traces to Langfuse automatically
@@ -81,7 +81,7 @@ npm install n8n-nodes-agent-langfuse
 ![Credential setup](assets/credential-setup.png)
 
 1. In n8n, go to **Credentials > New Credential**
-2. Search for **Langfuse API**
+2. Search for **Agent Langfuse API**
 3. Fill in:
    - **Base URL**: Your Langfuse instance URL (e.g., `https://cloud.langfuse.com` or your self-hosted URL)
    - **Public Key**: Your Langfuse project public key
@@ -305,7 +305,7 @@ Full conversational agent with tool access and conversation history, all traced 
 
 Each Langfuse API key pair belongs to one project. To use prompts from different projects:
 
-1. Create a **separate Langfuse API credential** for each project
+1. Create a **separate Agent Langfuse API credential** for each project
 2. Select the appropriate credential in each node
 3. The project name in trace metadata updates automatically
 
@@ -319,6 +319,17 @@ Each Langfuse API key pair belongs to one project. To use prompts from different
 
 Works with any LangChain-compatible Chat Model: OpenAI, OpenRouter, Anthropic, Azure OpenAI, Google Vertex AI, Ollama, and more.
 
+## Upgrading
+
+### 0.2.x to 0.3.0 (breaking)
+
+The credential type was renamed from `langfuseApi` to `agentLangfuseApi`, shown as **Agent Langfuse API**. n8n indexes credential types by a single global name, and the old one collided with other Langfuse community packages. n8n community nodes have no automatic credential migration, so after upgrading:
+
+1. Create a new **Agent Langfuse API** credential with the same Base URL, Public Key and Secret Key.
+2. Select it in each **AI Agent + Langfuse** node.
+
+The old credential is not deleted. It simply no longer matches this node.
+
 ## Troubleshooting
 
 ### "Cannot connect to Langfuse"
@@ -327,9 +338,13 @@ Works with any LangChain-compatible Chat Model: OpenAI, OpenRouter, Anthropic, A
 - For self-hosted Langfuse: ensure n8n can reach the URL (check Docker networking, firewalls)
 
 ### 401 "Invalid credentials. Confirm that you've configured the correct host." (self-hosted)
-That error body comes from **Langfuse Cloud**, so if you use a self-hosted instance it means requests are going to `cloud.langfuse.com` instead of your Base URL. This happens when the official `@langfuse/n8n-nodes-langfuse` package is also installed: both packages register a credential type named `langfuseApi` with different field names (`url` here, `host` there), and whichever schema loads last wins — per process, so the credential test can pass on the main instance while executions 401 on queue-mode workers, and behaviour can flip on any restart. When the official schema wins, n8n injects its `host` default (`https://cloud.langfuse.com`) into this node's stored credential data. Fixes:
-- Upgrade to a version with the `resolveBaseUrl` precedence fix, where the stored `url` always beats an injected `host` default
-- Uninstall one of the two packages and restart n8n (all processes, including workers) — recommended, as the shared credential type name also makes the credential edit form and credential test flip between the two schemas
+That error body comes from **Langfuse Cloud**, so on a self-hosted instance it means requests are reaching `cloud.langfuse.com` instead of your Base URL.
+
+**On 0.3.0 and later** this should not happen. The credential type is `agentLangfuseApi`, a name no other package registers, so the collision described below is gone. If you still hit it, check that the credential's Base URL points at your instance and that n8n can reach it from inside its container.
+
+**On 0.2.x and earlier** the credential type was named `langfuseApi`. The official `@langfuse/n8n-nodes-langfuse` package registers that same global name with a different field (`host` instead of `url`, defaulting to `https://cloud.langfuse.com`). With both packages installed the winning schema is load-order dependent per process, so the credential test could pass on the main instance while executions returned 401 on queue-mode workers, and the behaviour could flip on any restart. When the official schema won, n8n injected its `host` default into this node's stored credential data. Fixes:
+- **Upgrade to 0.3.0 or later** and recreate the credential (see [Upgrading](#upgrading))
+- On 0.2.2+, the stored `url` always beats an injected `host`, which cures the misrouting. Avoid co-installing both packages anyway: the shared credential type name also makes the credential edit form and the credential test flip between the two schemas
 
 ### Prompt dropdown is empty
 - Check that your Langfuse project has `chat`-type prompts (not `text`-type)
