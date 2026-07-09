@@ -134,6 +134,73 @@ test('drops required entirely when nothing survives', () => {
   assert.equal('required' in out, false);
 });
 
+// `$ref` and `$defs` are on the strip list, so dropping them without resolving
+// left a referenced property as an empty schema while it stayed in `required`.
+// Converters emit `$ref` for reused types, so this was not an edge case.
+
+test('inlines a local $ref before stripping $defs', () => {
+  const out = sanitizeGeminiSchema({
+    type: 'object',
+    $defs: { Addr: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'] } },
+    properties: { home: { $ref: '#/$defs/Addr' }, name: { type: 'string' } },
+    required: ['home', 'name'],
+  });
+  assert.equal('$defs' in out, false);
+  assert.deepEqual(out.properties.home, {
+    type: 'object',
+    properties: { city: { type: 'string' } },
+    required: ['city'],
+  });
+  assert.deepEqual(out.required, ['home', 'name']);
+});
+
+test('inlines a $ref that points at legacy definitions', () => {
+  const out = sanitizeGeminiSchema({
+    type: 'object',
+    definitions: { N: { type: 'number' } },
+    properties: { n: { $ref: '#/definitions/N' } },
+  });
+  assert.deepEqual(out.properties.n, { type: 'number' });
+});
+
+test('a recursive $ref terminates and degrades to an empty schema', () => {
+  const out = sanitizeGeminiSchema({
+    type: 'object',
+    $defs: { Node: { type: 'object', properties: { child: { $ref: '#/$defs/Node' } } } },
+    properties: { root: { $ref: '#/$defs/Node' } },
+  });
+  assert.equal(out.properties.root.type, 'object');
+  assert.deepEqual(out.properties.root.properties.child, {});
+});
+
+test('an unresolvable $ref degrades to an empty schema', () => {
+  const out = sanitizeGeminiSchema({ type: 'object', properties: { x: { $ref: '#/$defs/Missing' } } });
+  assert.deepEqual(out.properties.x, {});
+});
+
+test('a sibling keyword next to a $ref wins over the referenced schema', () => {
+  const out = sanitizeGeminiSchema({
+    type: 'object',
+    $defs: { S: { type: 'string', description: 'from the ref' } },
+    properties: { a: { $ref: '#/$defs/S', description: 'from the sibling' } },
+  });
+  assert.deepEqual(out.properties.a, { type: 'string', description: 'from the sibling' });
+});
+
+// `allOf` means "satisfy all", so taking the first branch silently drops the
+// rest. `anyOf` and `oneOf` are genuine alternatives, so the first branch stays.
+
+test('allOf merges every object subschema instead of taking the first', () => {
+  const out = sanitizeGeminiSchema({
+    allOf: [
+      { type: 'object', properties: { a: { type: 'string' } }, required: ['a'] },
+      { type: 'object', properties: { b: { type: 'number' } }, required: ['b'] },
+    ],
+  });
+  assert.deepEqual(Object.keys(out.properties).sort(), ['a', 'b']);
+  assert.deepEqual([...out.required].sort(), ['a', 'b']);
+});
+
 test('recurses into nested objects and arrays', () => {
   const out = sanitizeGeminiSchema({
     type: 'object',

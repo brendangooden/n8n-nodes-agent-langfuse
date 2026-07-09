@@ -53,21 +53,96 @@ export function isGeminiModel(model: unknown): boolean {
   return /google|vertex|gemini/i.test(ctor);
 }
 
+const MAX_REF_DEPTH = 8;
+
+/** Resolve a local JSON Pointer such as "#/$defs/Addr" against the root document. */
+function lookupPointer(root: Record<string, unknown>, pointer: string): unknown {
+  if (!pointer.startsWith('#/')) return undefined;
+  let cur: unknown = root;
+  for (const raw of pointer.slice(2).split('/')) {
+    const key = raw.replace(/~1/g, '/').replace(/~0/g, '~');
+    if (!cur || typeof cur !== 'object') return undefined;
+    cur = (cur as Record<string, unknown>)[key];
+  }
+  return cur;
+}
+
+/**
+ * Inline local `$ref` pointers before the unsupported keywords are stripped.
+ *
+ * Gemini rejects `$ref` and `$defs`, so dropping them without resolving turns
+ * every referenced property into an empty schema while it stays in `required`:
+ * the model loses the argument's shape. Recursive or unresolvable references
+ * degrade to `{}` rather than looping.
+ */
+function inlineLocalRefs(root: unknown): unknown {
+  if (!root || typeof root !== 'object') return root;
+  const doc = root as Record<string, unknown>;
+
+  const walk = (node: unknown, depth: number, seen: ReadonlySet<string>): unknown => {
+    if (Array.isArray(node)) return node.map((n) => walk(n, depth, seen));
+    if (!node || typeof node !== 'object') return node;
+
+    const src = node as Record<string, unknown>;
+    const ref = src.$ref;
+
+    if (typeof ref === 'string') {
+      if (depth >= MAX_REF_DEPTH || seen.has(ref)) return {};
+      const target = lookupPointer(doc, ref);
+      if (!target || typeof target !== 'object') return {};
+      const nextSeen = new Set(seen).add(ref);
+      const inlined = walk(target, depth + 1, nextSeen) as Record<string, unknown>;
+      // Sibling keys next to a $ref win over the referenced schema.
+      const siblings: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(src)) {
+        if (k !== '$ref') siblings[k] = walk(v, depth, seen);
+      }
+      return { ...inlined, ...siblings };
+    }
+
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(src)) out[k] = walk(v, depth, seen);
+    return out;
+  };
+
+  return walk(doc, 0, new Set<string>());
+}
+
+/** Merge an object subschema into the accumulator: union of properties and of required. */
+function mergeSubschema(out: Record<string, unknown>, sub: Record<string, unknown>): void {
+  for (const [k, v] of Object.entries(sub)) {
+    if (k === 'properties' && v && typeof v === 'object') {
+      out.properties = { ...((out.properties as Record<string, unknown>) ?? {}), ...(v as object) };
+    } else if (k === 'required' && Array.isArray(v)) {
+      out.required = [...new Set([...((out.required as string[]) ?? []), ...(v as string[])])];
+    } else {
+      out[k] = v;
+    }
+  }
+}
+
 /** Recursively strip keywords / constructs Gemini can't parse. */
-export function sanitizeGeminiSchema(node: unknown): unknown {
-  if (Array.isArray(node)) return node.map(sanitizeGeminiSchema);
+function stripUnsupported(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(stripUnsupported);
   if (!node || typeof node !== 'object') return node;
 
   const src = node as Record<string, unknown>;
   const out: Record<string, unknown> = {};
 
-  // Gemini doesn't support anyOf/oneOf/allOf — flatten to the first
-  // object-typed subschema so the parameter shape survives.
-  for (const key of ['anyOf', 'oneOf', 'allOf'] as const) {
-    if (Array.isArray(src[key])) {
-      const first = (src[key] as unknown[]).find((s) => s && typeof s === 'object');
-      if (first) Object.assign(out, sanitizeGeminiSchema(first) as object);
+  // Gemini has no unions. `allOf` means "satisfy all", so every object subschema
+  // is merged; dropping all but the first would lose the other branches'
+  // properties. `anyOf` and `oneOf` are alternatives, so the first branch stays.
+  if (Array.isArray(src.allOf)) {
+    for (const sub of src.allOf as unknown[]) {
+      if (sub && typeof sub === 'object') {
+        mergeSubschema(out, stripUnsupported(sub) as Record<string, unknown>);
+      }
     }
+  }
+  for (const key of ['anyOf', 'oneOf'] as const) {
+    if (!Array.isArray(src[key])) continue;
+    const first = (src[key] as unknown[]).find((s) => s && typeof s === 'object');
+    if (first) mergeSubschema(out, stripUnsupported(first) as Record<string, unknown>);
   }
 
   for (const [key, value] of Object.entries(src)) {
@@ -90,14 +165,18 @@ export function sanitizeGeminiSchema(node: unknown): unknown {
     ) {
       continue; // drop unsupported string formats
     }
+    // `properties` and `required` accumulate: a merged subschema may already
+    // have contributed entries that this node's own keys must not overwrite.
     if (key === 'properties' && value && typeof value === 'object') {
-      const props: Record<string, unknown> = {};
+      const props: Record<string, unknown> = { ...((out.properties as Record<string, unknown>) ?? {}) };
       for (const [p, pSchema] of Object.entries(value as Record<string, unknown>)) {
-        props[p] = sanitizeGeminiSchema(pSchema);
+        props[p] = stripUnsupported(pSchema);
       }
-      out[key] = props;
+      out.properties = props;
+    } else if (key === 'required' && Array.isArray(value)) {
+      out.required = [...new Set([...((out.required as string[]) ?? []), ...(value as string[])])];
     } else {
-      out[key] = sanitizeGeminiSchema(value);
+      out[key] = stripUnsupported(value);
     }
   }
 
@@ -112,6 +191,11 @@ export function sanitizeGeminiSchema(node: unknown): unknown {
     if ((out.required as string[]).length === 0) delete out.required;
   }
   return out;
+}
+
+/** Resolve local references, then strip everything Gemini can't parse. */
+export function sanitizeGeminiSchema(schema: unknown): unknown {
+  return stripUnsupported(inlineLocalRefs(schema));
 }
 
 function toJsonSchema(schema: unknown): Record<string, unknown> | undefined {
