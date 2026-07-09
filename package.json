@@ -15,6 +15,16 @@
     "name": "diward",
     "email": "edu.diward@gmail.com"
   },
+  "contributors": [
+    {
+      "name": "Brendan Gooden",
+      "url": "https://github.com/brendangooden"
+    },
+    {
+      "name": "harmoney-stella",
+      "url": "https://github.com/harmoney-stella"
+    }
+  ],
   "publishConfig": {
     "access": "public"
   },
