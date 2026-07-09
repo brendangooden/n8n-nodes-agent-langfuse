@@ -30,7 +30,7 @@
     "build": "rm -rf dist && tsc && npm run copy-icons",
     "copy-icons": "mkdir -p dist/nodes/AgentLangfuse/icons && cp nodes/AgentLangfuse/icons/*.svg dist/nodes/AgentLangfuse/icons/",
     "dev": "tsc --watch",
-    "test": "npm run build && node --test \"test/**/*.test.js\"",
+    "test": "npm run build && node --test test/*.test.js",
     "prepublishOnly": "npm run build"
   },
   "files": [
@@ -56,6 +56,7 @@
   },
   "devDependencies": {
     "n8n-workflow": "^2.13.1",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "zod": "^3.25.76"
   }
 }
