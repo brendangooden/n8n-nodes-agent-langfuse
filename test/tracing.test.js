@@ -25,13 +25,13 @@ function fakeSpan(traceId) {
 }
 
 function fakeProcessor() {
-  const seen = { started: [], ended: [], flushes: 0 };
+  const seen = { started: [], ended: [], flushes: 0, shutdowns: 0 };
   return {
     seen,
     onStart: (span) => seen.started.push(span.spanContext().traceId),
     onEnd: (span) => seen.ended.push(span.spanContext().traceId),
     forceFlush: async () => { seen.flushes += 1; },
-    shutdown: async () => {},
+    shutdown: async () => { seen.shutdowns += 1; },
   };
 }
 
@@ -214,4 +214,92 @@ test('an absent session or user id writes no attribute at all', () => {
 
   applyTraceIdentity(span, { userId: 'user-only' });
   assert.deepEqual([...attributes.entries()], [['user.id', 'user-only']]);
+});
+
+// --------------------------------------------------------------------------
+// shutdown: OpenTelemetry's SpanProcessor contract
+// --------------------------------------------------------------------------
+
+test('shutdown reaches every processor exactly once', async () => {
+  const built = [];
+  const router = new RoutingSpanProcessor(() => {
+    const p = fakeProcessor();
+    built.push(p);
+    return p;
+  });
+  router.ensure(CREDS_A);
+  router.ensure(CREDS_B);
+
+  await router.shutdown();
+
+  assert.equal(built.length, 2);
+  for (const p of built) assert.equal(p.seen.shutdowns, 1);
+});
+
+test('a shut down router hands no further spans to its dead processors', async () => {
+  // A processor that has been shut down rejects its exporter's writes. Handing
+  // it a span after shutdown loses the span and, with Langfuse, logs an error
+  // per span for the rest of the process's life. An execution still in flight
+  // when shutdown ran is exactly how such a span arrives.
+  const built = [];
+  const router = new RoutingSpanProcessor(() => {
+    const p = fakeProcessor();
+    built.push(p);
+    return p;
+  });
+  await runWithRouteForTests(router, CREDS_A, async () => {
+    router.onStart(fakeSpan('trace-1'), {});
+  });
+
+  await router.shutdown();
+
+  router.onEnd(fakeSpan('trace-1'));
+  await runWithRouteForTests(router, CREDS_A, async () => {
+    router.onStart(fakeSpan('trace-2'), {});
+    router.onEnd(fakeSpan('trace-2'));
+  });
+
+  assert.deepEqual(built[0].seen.started, ['trace-1'], 'no span may start on a dead processor');
+  assert.deepEqual(built[0].seen.ended, [], 'no span may end on a dead processor');
+});
+
+test('a second shutdown awaits the first one draining', async () => {
+  // Resolving early, while the exporters are still emptying, loses whatever
+  // they had buffered.
+  let releaseDrain;
+  const drained = new Promise((resolve) => {
+    releaseDrain = resolve;
+  });
+  const processor = { ...fakeProcessor(), shutdown: () => drained };
+  const router = new RoutingSpanProcessor(() => processor);
+  router.ensure(CREDS_A);
+
+  const first = router.shutdown();
+  const second = router.shutdown();
+
+  let secondResolved = false;
+  void second.then(() => {
+    secondResolved = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(secondResolved, false, 'the second shutdown resolved before the drain finished');
+
+  releaseDrain();
+  await Promise.all([first, second]);
+  assert.equal(secondResolved, true);
+});
+
+test('a shut down router builds no new processors', async () => {
+  // Otherwise ensure() would revive the router with a processor that nothing
+  // will ever shut down.
+  let built = 0;
+  const router = new RoutingSpanProcessor(() => {
+    built += 1;
+    return fakeProcessor();
+  });
+
+  await router.shutdown();
+  router.ensure(CREDS_A);
+
+  assert.equal(built, 0);
 });

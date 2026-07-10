@@ -72,6 +72,8 @@ export function applyTraceIdentity(span: Span, identity: TraceIdentity): void {
 export class RoutingSpanProcessor implements SpanProcessor {
   private readonly processors = new Map<string, SpanProcessor>();
   private readonly routes = new Map<string, string>();
+  private isShutdown = false;
+  private shutdownPromise?: Promise<void>;
 
   constructor(
     private readonly createProcessor: (credentials: LangfuseCredentials) => SpanProcessor,
@@ -79,7 +81,7 @@ export class RoutingSpanProcessor implements SpanProcessor {
 
   ensure(credentials: LangfuseCredentials): string {
     const fingerprint = credentialFingerprint(credentials);
-    if (!this.processors.has(fingerprint)) {
+    if (!this.isShutdown && !this.processors.has(fingerprint)) {
       this.processors.set(fingerprint, this.createProcessor(credentials));
     }
     return fingerprint;
@@ -111,8 +113,31 @@ export class RoutingSpanProcessor implements SpanProcessor {
     await Promise.all([...this.processors.values()].map((p) => p.forceFlush()));
   }
 
+  /**
+   * Implements OpenTelemetry's SpanProcessor contract, for a provider that
+   * chooses to shut down.
+   *
+   * The node never calls this: n8n gives a community node no shutdown hook, and
+   * a LangfuseSpanProcessor holds no timer that would keep the event loop alive,
+   * so leaving one per credential running until the process exits costs nothing.
+   */
   async shutdown(): Promise<void> {
-    await Promise.all([...this.processors.values()].map((p) => p.shutdown()));
+    // Callers of a second shutdown must await the first one's drain, not return
+    // early while the exporters are still emptying.
+    if (!this.shutdownPromise) this.shutdownPromise = this.drain();
+    return await this.shutdownPromise;
+  }
+
+  private async drain(): Promise<void> {
+    this.isShutdown = true;
+
+    // Stop routing before the exporters close. A span handed to a processor that
+    // has already shut down is dropped, and Langfuse logs an error for each one.
+    const processors = [...this.processors.values()];
+    this.processors.clear();
+    this.routes.clear();
+
+    await Promise.all(processors.map((p) => p.shutdown()));
   }
 }
 
