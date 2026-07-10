@@ -32,7 +32,7 @@ export class AgentLangfuse implements INodeType {
         AI: ['Agents', 'Root Nodes'],
       },
     },
-    // Dynamic inputs based on parameters — evaluated at runtime by n8n expression engine
+    // Dynamic inputs based on parameters, evaluated at runtime by the n8n expression engine
     inputs: `={{
       ((hasOutputParser, needsFallback) => {
         const inputs = [
@@ -140,7 +140,7 @@ export class AgentLangfuse implements INodeType {
         ],
         default: 'auto',
         description:
-          'Ignored when the selected Langfuse prompt defines a user message — that user message becomes the human turn.',
+          'Ignored when the selected Langfuse prompt defines a user message: that user message becomes the human turn.',
       },
       {
         displayName: 'Text',

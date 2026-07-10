@@ -576,7 +576,7 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
   const enableStreaming = this.getNodeParameter('options.enableStreaming', 0, true) as boolean;
 
   // -----------------------------------------------------------------------
-  // Langfuse prompt source — fetch once (shared across items)
+  // Langfuse prompt source: fetch once (shared across items)
   // -----------------------------------------------------------------------
   const promptSource = this.getNodeParameter('promptSource', 0, 'manual') as string;
   let langfusePromptResult: Awaited<ReturnType<typeof fetchPrompt>> | undefined;
@@ -664,8 +664,8 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
       }
 
       // Get user input. When the Langfuse prompt defines a user-role
-      // message, that compiled content replaces the Text/chatInput field
-      // — Langfuse-defined prompts own the human turn.
+      // message, that compiled content replaces the Text/chatInput field:
+      // Langfuse-defined prompts own the human turn.
       let input: string | undefined;
       if (compiledUserMessage !== undefined) {
         input = compiledUserMessage;
@@ -706,7 +706,7 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
       }
 
       // -------------------------------------------------------------------
-      // Langfuse handler (per item — different sessionId/userId possible)
+      // Langfuse handler (per item: different sessionId/userId possible)
       // -------------------------------------------------------------------
       const langfuseCreds = (await this.getCredentials('agentLangfuseApi')) as unknown as LangfuseCredentials;
 
@@ -755,7 +755,7 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
       }
 
       // Auto fields are factual (execution id, workflow, node, project,
-      // prompt version) — they always win over user-supplied custom metadata.
+      // prompt version), and always win over user-supplied custom metadata.
       const collidingKeys = Object.keys(parsedCustomMetadata ?? {}).filter(
         (key) => key in autoMetadata,
       );
@@ -804,7 +804,7 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
         // Langfuse prompt (with vars substituted) overrides the system message
         systemMessage = compiledSystemMessage;
       } else if (langfusePromptResult) {
-        // Fallback safety net — shouldn't hit when promptSource=langfuse
+        // Fallback safety net: shouldn't hit when promptSource=langfuse
         systemMessage = langfusePromptResult.systemMessage;
       }
 
