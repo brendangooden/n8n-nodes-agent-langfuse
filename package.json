@@ -44,8 +44,12 @@
     "prepublishOnly": "npm run build"
   },
   "files": [
-    "dist"
+    "dist",
+    "NOTICE"
   ],
+  "peerDependencies": {
+    "n8n": ">=2.0.0"
+  },
   "n8n": {
     "n8nNodesApiVersion": 1,
     "credentials": [

@@ -1,0 +1,18 @@
+n8n-nodes-agent-langfuse
+Copyright (c) 2026 diward
+
+This product includes software derived from n8n.
+
+The following functions in nodes/AgentLangfuse/execute.ts are derived from
+`ToolsAgent/common.ts` in the package @n8n/n8n-nodes-langchain, published by
+n8n GmbH under the Sustainable Use License:
+
+  fixEmptyContentMessage
+  getAgentStepsParser
+  handleAgentFinishOutput
+  handleParsedStepOutput
+  extractBinaryMessages
+  getOutputParserSchema
+
+Source:  https://github.com/n8n-io/n8n/blob/master/packages/%40n8n/nodes-langchain/nodes/agents/Agent/agents/ToolsAgent/common.ts
+License: https://github.com/n8n-io/n8n/blob/master/LICENSE.md

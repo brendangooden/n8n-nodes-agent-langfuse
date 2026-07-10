@@ -329,6 +329,20 @@ Works with any LangChain-compatible Chat Model: OpenAI, OpenRouter, Anthropic, A
 
 ## Upgrading
 
+### 0.3.x to 0.4.0
+
+This release requires **n8n 2.0.0 or later**. It builds its messages with
+`@langchain/core` 1.x, the version n8n 2.x runs. On n8n 1.x, stay on 0.3.3.
+
+Tools now work. Before 0.4.0 every tool call failed on recent n8n because the
+tool result reached the provider without its `tool_call_id`; 0.3.3 patched that
+from the outside, and 0.4.0 removes the cause.
+
+Traces are unchanged in shape and name. Internally they are now produced through
+OpenTelemetry, so a Langfuse server older than 3.x will not accept them.
+
+No credential change. `agentLangfuseApi` keeps its fields.
+
 ### 0.2.x to 0.3.0 (breaking)
 
 The credential type was renamed from `langfuseApi` to `agentLangfuseApi`, shown as **Agent Langfuse API**. n8n indexes credential types by a single global name, and the old one collided with other Langfuse community packages. n8n community nodes have no automatic credential migration, so after upgrading:
