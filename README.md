@@ -199,6 +199,7 @@ Result (chatInput ignored):
 |-------|-------------|
 | **Session ID** | Groups related traces in Langfuse. Supports n8n expressions (e.g., `{{ $json.sessionId }}`). |
 | **User ID** | Identifies the end user. Supports expressions. |
+| **Environment** | The Langfuse environment for the trace, e.g. `production` or `staging`. Left empty, Langfuse applies its own default. |
 | **Trace Name** | Custom name for the trace. **Defaults to `<workflow name> - <node name>`**. For example, a node named "AI Agent - Selector" in the workflow "Customer Support" produces the trace name "Customer Support - AI Agent - Selector". |
 | **Custom Metadata (JSON)** | Any additional metadata you want to attach to traces. |
 
@@ -251,6 +252,15 @@ Every execution produces a full trace in Langfuse showing:
 - Token usage and cost
 - The output with structured fields
 - All metadata (automatic + custom)
+
+#### Trace on the node output
+
+Each output item also carries the trace's identity, so a downstream node can link to it, attach a score, or gate on it:
+
+| Field | Value |
+|-------|-------|
+| `langfuseTraceId` | The trace id (matches the trace in Langfuse). |
+| `langfuseTraceUrl` | A direct link to the trace, e.g. `https://cloud.langfuse.com/project/<id>/traces/<traceId>`. Present when the project id can be read from the Langfuse API. |
 
 ### Options
 

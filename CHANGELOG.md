@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-07-10
+
+### Added
+
+- **The Langfuse trace is now on the node output.** Every output item carries `langfuseTraceId` and, when the project id can be read, a clickable `langfuseTraceUrl`, so a downstream node can link to the trace, attach a score to it, or gate on it without leaving the workflow. The id is captured from the routing span processor, which already sees every span's trace, so it needs nothing from the Langfuse internals and survives a failing flush.
+- **An `Environment` field** on the Langfuse Metadata collection. It writes `langfuse.environment` on the trace's root span, the same way Session ID and User ID are written, so production, staging and test traces separate cleanly in Langfuse. Left empty, Langfuse applies its own default.
+
 ## [0.4.1] - 2026-07-10
 
 ### Added
