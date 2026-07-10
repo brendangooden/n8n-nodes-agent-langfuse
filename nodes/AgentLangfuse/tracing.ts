@@ -16,6 +16,12 @@ import type { LangfuseCredentials } from './types';
 export interface TraceIdentity {
   sessionId?: string;
   userId?: string;
+  environment?: string;
+}
+
+/** Filled with the id of the trace an execution raised, for the node output. */
+export interface TraceCapture {
+  traceId?: string;
 }
 
 interface TraceRoute {
@@ -54,6 +60,9 @@ export function applyTraceIdentity(span: Span, identity: TraceIdentity): void {
   }
   if (identity.userId) {
     span.setAttribute(LangfuseOtelSpanAttributes.TRACE_USER_ID, identity.userId);
+  }
+  if (identity.environment) {
+    span.setAttribute(LangfuseOtelSpanAttributes.ENVIRONMENT, identity.environment);
   }
 }
 
@@ -173,10 +182,18 @@ async function runTraced<T>(
   route: TraceRoute,
   fn: () => Promise<T>,
   onFlushError?: (error: Error) => void,
+  capture?: TraceCapture,
 ): Promise<T> {
   try {
     return await routeStorage.run(route, fn);
   } finally {
+    // Every span of one execution shares a trace, so the first id the route
+    // collected is the trace the caller wants to surface. Captured before the
+    // flush, so a failing flush still yields the id.
+    if (capture) {
+      const [traceId] = route.traceIds;
+      capture.traceId = traceId;
+    }
     try {
       await provider.forceFlush();
     } catch (error) {
@@ -205,11 +222,12 @@ export async function withTracing<T>(
   identity: TraceIdentity,
   fn: () => Promise<T>,
   onFlushError?: (error: Error) => void,
+  capture?: TraceCapture,
 ): Promise<T> {
   const { provider: activeProvider, router: activeRouter } = ensureProvider();
   const fingerprint = activeRouter.ensure(credentials);
   const route: TraceRoute = { fingerprint, identity, traceIds: new Set() };
-  return runTraced(activeProvider, activeRouter, route, fn, onFlushError);
+  return runTraced(activeProvider, activeRouter, route, fn, onFlushError, capture);
 }
 
 // Test seams. Not part of the node's runtime path.

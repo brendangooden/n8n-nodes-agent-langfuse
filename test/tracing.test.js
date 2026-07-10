@@ -303,3 +303,93 @@ test('a shut down router builds no new processors', async () => {
 
   assert.equal(built, 0);
 });
+
+// --------------------------------------------------------------------------
+// environment identity and trace id capture (0.5.0)
+// --------------------------------------------------------------------------
+
+test('applyTraceIdentity writes the environment attribute on the span', () => {
+  const attributes = new Map();
+  const span = { setAttribute: (key, value) => attributes.set(key, value) };
+
+  applyTraceIdentity(span, { environment: 'production' });
+  assert.deepEqual([...attributes.entries()], [['langfuse.environment', 'production']]);
+});
+
+test('an absent environment writes no attribute', () => {
+  const attributes = new Map();
+  const span = { setAttribute: (key, value) => attributes.set(key, value) };
+
+  applyTraceIdentity(span, { sessionId: 'only-session' });
+  assert.equal(attributes.has('langfuse.environment'), false);
+});
+
+test('environment rides on the root span through the route', async () => {
+  const processor = fakeProcessor();
+  const router = new RoutingSpanProcessor(() => processor);
+  router.ensure(CREDS_A);
+
+  const attributes = new Map();
+  const root = { ...fakeSpan('t-env'), setAttribute: (key, value) => attributes.set(key, value) };
+
+  await runWithRouteForTests(
+    router,
+    CREDS_A,
+    async () => {
+      router.onStart(root, {});
+    },
+    new Set(),
+    { environment: 'staging' },
+  );
+
+  assert.equal(attributes.get('langfuse.environment'), 'staging');
+});
+
+test('runTraced captures the trace id the execution raised', async () => {
+  const processor = fakeProcessor();
+  const router = new RoutingSpanProcessor(() => processor);
+  router.ensure(CREDS_A);
+
+  const provider = { forceFlush: async () => {} };
+  const route = { fingerprint: credentialFingerprint(CREDS_A), identity: {}, traceIds: new Set() };
+  const capture = {};
+
+  const result = await runTracedForTests(
+    provider,
+    router,
+    route,
+    async () => {
+      router.onStart(fakeSpan('trace-captured'), {});
+      return 'the result';
+    },
+    undefined,
+    capture,
+  );
+
+  assert.equal(result, 'the result');
+  assert.equal(capture.traceId, 'trace-captured');
+});
+
+test('the captured trace id survives a failing flush', async () => {
+  const processor = fakeProcessor();
+  const router = new RoutingSpanProcessor(() => processor);
+  router.ensure(CREDS_A);
+
+  const provider = { forceFlush: async () => { throw new Error('flush down'); } };
+  const route = { fingerprint: credentialFingerprint(CREDS_A), identity: {}, traceIds: new Set() };
+  const capture = {};
+
+  await runTracedForTests(
+    provider,
+    router,
+    route,
+    async () => {
+      router.onStart(fakeSpan('trace-despite-flush'), {});
+      return 'ok';
+    },
+    () => {},
+    capture,
+  );
+
+  assert.equal(capture.traceId, 'trace-despite-flush');
+});

@@ -20,8 +20,8 @@ import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import { z } from 'zod';
 
 import { extractBinaryMessages } from './binaryPassthrough';
-import { compilePromptMessages, fetchProjectName, fetchPrompt } from './langfuse';
-import { withTracing } from './tracing';
+import { compilePromptMessages, fetchProject, fetchPrompt, resolveBaseUrl } from './langfuse';
+import { withTracing, type TraceCapture } from './tracing';
 import { isGeminiModel, sanitizeToolsForGemini } from './geminiSchema';
 import type { LangfuseCredentials, LangfuseMetadata } from './types';
 
@@ -581,18 +581,23 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
   const promptSource = this.getNodeParameter('promptSource', 0, 'manual') as string;
   let langfusePromptResult: Awaited<ReturnType<typeof fetchPrompt>> | undefined;
   let langfuseProjectName: string | undefined;
+  let langfuseProjectId: string | undefined;
+
+  // The node always traces to the credential's project, so fetch it once
+  // regardless of prompt source: the name goes on the trace metadata and the id
+  // builds the clickable trace URL surfaced on the node output.
+  {
+    const langfuseCreds = (await this.getCredentials('agentLangfuseApi')) as unknown as LangfuseCredentials;
+    const project = await fetchProject(langfuseCreds);
+    langfuseProjectName = project.name;
+    langfuseProjectId = project.id;
+  }
 
   if (promptSource === 'langfuse') {
     const langfuseCreds = (await this.getCredentials('agentLangfuseApi')) as unknown as LangfuseCredentials;
     const promptName = this.getNodeParameter('langfusePrompt', 0) as string;
 
-    // Fetch prompt and project name in parallel
-    const [promptResult, projectName] = await Promise.all([
-      fetchPrompt(langfuseCreds, promptName, this.getNode()),
-      fetchProjectName(langfuseCreds),
-    ]);
-    langfusePromptResult = promptResult;
-    langfuseProjectName = projectName;
+    langfusePromptResult = await fetchPrompt(langfuseCreds, promptName, this.getNode());
 
     // Optionally override model name and temperature from Langfuse config
     const modelSource = this.getNodeParameter('modelSource', 0, 'manual') as string;
@@ -774,6 +779,7 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
         customMetadata: mergedMetadata,
         sessionId: rawMetadata.sessionId as string | undefined,
         userId: rawMetadata.userId as string | undefined,
+        environment: (rawMetadata.environment as string) || undefined,
         traceName,
       };
 
@@ -882,9 +888,15 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
         this.logger.warn(`Could not flush traces to Langfuse: ${error.message}`);
       };
 
-      return await withTracing(
+      const traceCapture: TraceCapture = {};
+
+      const response = await withTracing(
         langfuseCreds,
-        { sessionId: langfuseMetadata.sessionId, userId: langfuseMetadata.userId },
+        {
+          sessionId: langfuseMetadata.sessionId,
+          userId: langfuseMetadata.userId,
+          environment: langfuseMetadata.environment,
+        },
         async () => {
           if ('isStreaming' in this && enableStreaming && isStreamingAvailable) {
             let chatHistory: unknown;
@@ -913,7 +925,22 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
           return await executor.invoke(invokeParams, executeOptions);
         },
         onFlushError,
+        traceCapture,
       );
+
+      // Surface the Langfuse trace on the node output so downstream nodes can
+      // link to it, score it, or gate on it. The url needs the project id,
+      // which is absent only when the projects endpoint could not be read.
+      if (traceCapture.traceId && response && typeof response === 'object') {
+        const out = response as Record<string, unknown>;
+        out.langfuseTraceId = traceCapture.traceId;
+        if (langfuseProjectId) {
+          const base = resolveBaseUrl(langfuseCreds).replace(/\/+$/, '');
+          out.langfuseTraceUrl = `${base}/project/${langfuseProjectId}/traces/${traceCapture.traceId}`;
+        }
+      }
+
+      return response;
     });
 
     const batchResults = await Promise.allSettled(batchPromises);

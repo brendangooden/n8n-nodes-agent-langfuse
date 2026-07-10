@@ -23,6 +23,7 @@ export interface LangfusePromptResult {
 export interface LangfuseMetadata {
   sessionId?: string;
   userId?: string;
+  environment?: string;
   traceName?: string;
   customMetadata?: Record<string, unknown>;
 }

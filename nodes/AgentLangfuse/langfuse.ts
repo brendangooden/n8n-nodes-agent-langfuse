@@ -195,15 +195,16 @@ export function compilePromptMessages(
   };
 }
 
-export async function fetchProjectName(
+export async function fetchProject(
   credentials: LangfuseCredentials,
-): Promise<string | undefined> {
+): Promise<{ name?: string; id?: string }> {
   try {
     const data = (await langfuseApiRequest(credentials, '/api/public/projects')) as {
-      data: Array<{ name: string }>;
+      data: Array<{ name: string; id: string }>;
     };
-    return data.data?.[0]?.name;
+    const project = data.data?.[0];
+    return { name: project?.name, id: project?.id };
   } catch {
-    return undefined;
+    return {};
   }
 }

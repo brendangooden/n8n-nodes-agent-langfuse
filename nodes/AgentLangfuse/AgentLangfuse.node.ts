@@ -208,6 +208,15 @@ export class AgentLangfuse implements INodeType {
             description: 'For trace attribution in Langfuse',
           },
           {
+            displayName: 'Environment',
+            name: 'environment',
+            type: 'string',
+            default: '',
+            placeholder: 'production',
+            description:
+              'Langfuse environment for the trace (e.g. production, staging). Leave empty to use the Langfuse default.',
+          },
+          {
             displayName: 'Trace Name',
             name: 'traceName',
             type: 'string',
