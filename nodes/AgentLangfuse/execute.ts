@@ -19,6 +19,7 @@ import { NodeOperationError, jsonParse, sleep } from 'n8n-workflow';
 import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import { z } from 'zod';
 
+import { extractBinaryMessages } from './binaryPassthrough';
 import { compilePromptMessages, fetchProjectName, fetchPrompt } from './langfuse';
 import { withTracing } from './tracing';
 import { isGeminiModel, sanitizeToolsForGemini } from './geminiSchema';
@@ -163,41 +164,6 @@ function getPromptInputByType(options: {
   return input;
 }
 
-async function extractBinaryMessages(
-  ctx: IExecuteFunctions,
-  itemIndex: number,
-): Promise<HumanMessage> {
-  const binaryData = ctx.getInputData()?.[itemIndex]?.binary ?? {};
-
-  const binaryMessages = await Promise.all(
-    Object.values(binaryData)
-      .filter((data) => data.mimeType.startsWith('image/'))
-      .map(async (data) => {
-        let binaryUrlString: string;
-
-        if (data.id) {
-          const binaryBuffer = await ctx.helpers.binaryToBuffer(
-            await ctx.helpers.getBinaryStream(data.id),
-          );
-          binaryUrlString = `data:${data.mimeType};base64,${Buffer.from(binaryBuffer).toString('base64')}`;
-        } else {
-          binaryUrlString = data.data.includes('base64')
-            ? data.data
-            : `data:${data.mimeType};base64,${data.data}`;
-        }
-
-        return {
-          type: 'image_url' as const,
-          image_url: { url: binaryUrlString },
-        };
-      }),
-  );
-
-  return new HumanMessage({
-    content: [...binaryMessages],
-  });
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function fixEmptyContentMessage(steps: any): any {
   if (!Array.isArray(steps)) return steps;
@@ -339,6 +305,7 @@ async function prepareMessages(
   options: {
     systemMessage?: string;
     passthroughBinaryImages?: boolean;
+    passthroughBinaryPdfs?: boolean;
     outputParser?: unknown;
   },
 ): Promise<MessageTuple[]> {
@@ -357,10 +324,14 @@ async function prepareMessages(
   messages.push(['placeholder', '{chat_history}'], ['human', '{input}']);
 
   const hasBinaryData = ctx.getInputData()?.[itemIndex]?.binary !== undefined;
-  if (hasBinaryData && options.passthroughBinaryImages) {
-    const binaryMessage = await extractBinaryMessages(ctx, itemIndex);
+  // Text attachments ride along on either option being on, which is why the
+  // gate is an `or` and not a check for the kind of file actually attached.
+  if (hasBinaryData && (options.passthroughBinaryImages || options.passthroughBinaryPdfs)) {
+    const binaryMessage = await extractBinaryMessages(ctx, itemIndex, options);
     if ((binaryMessage.content as unknown[]).length !== 0) {
       messages.push(binaryMessage);
+    } else {
+      ctx.logger.debug('Not attaching binary message, since its content was empty');
     }
   }
 
@@ -843,6 +814,7 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
       const messages = await prepareMessages(this, itemIndex, {
         systemMessage,
         passthroughBinaryImages: (options.passthroughBinaryImages as boolean) ?? true,
+        passthroughBinaryPdfs: (options.passthroughBinaryPdfs as boolean) ?? false,
         outputParser,
       });
 
