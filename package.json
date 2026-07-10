@@ -7,8 +7,16 @@
     "langfuse",
     "langchain",
     "ai-agent",
+    "agent",
+    "ai",
+    "llm",
     "observability",
-    "tracing"
+    "tracing",
+    "prompt-management",
+    "openai",
+    "anthropic",
+    "gemini",
+    "openrouter"
   ],
   "license": "MIT",
   "author": {

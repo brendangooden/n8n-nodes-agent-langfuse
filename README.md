@@ -22,18 +22,23 @@ If you use n8n's AI Agent with Langfuse, you currently need:
 
 ### vs. other Langfuse nodes
 
-| Feature | This node | Official Langfuse nodes | Wistron DXLab |
-|---------|-----------|------------------------|---------------|
-| Agent execution | Yes | No (separate nodes) | Yes |
-| Prompt selector dropdown | Yes | Yes (separate node) | No |
+Two kinds of node exist in this space: an agent node (runs the tool-calling agent and traces it) and the official Langfuse node (fetches a prompt, no agent). This node is the agent kind, kept current with n8n's own agent.
+
+| Feature | This node | Other agent + Langfuse nodes | Official Langfuse node |
+|---------|-----------|------------------------------|------------------------|
+| Runs the tool-calling agent | Yes | Yes | No (prompt fetch only) |
+| Prompt selector dropdown | Yes | No | Yes |
 | Prompt variable substitution (auto-loaded fields) | Yes | No | No |
+| Model / temperature from prompt config | Yes | No | N/A |
 | Generation linked to prompt version | Yes | No | No |
-| Model override from prompt config | Yes | N/A | No |
-| Auto metadata (execution, workflow, node, project, prompt) | Yes | No | No |
-| Agent V3 architecture | Yes | N/A | No (V2) |
-| Streaming support | Yes | N/A | Limited |
-| Fallback model | Yes | N/A | Yes |
-| Batching | Yes | N/A | Yes |
+| LangChain major aligned with n8n 2.x (tools work) | Yes (1.x) | Mixed (many still on 0.3) | N/A |
+| Langfuse SDK | v5 (OpenTelemetry) | mostly v3 (legacy callback) | N/A (declarative HTTP) |
+| No trace leak across projects (per-credential routing) | Yes | No | N/A |
+| Trace id + URL on the node output | Yes | Rare | N/A |
+| Google Gemini / Vertex tool schemas sanitized | Yes | No | N/A |
+| PDF / text attachment passthrough | Yes | No | N/A |
+| Streaming, fallback model, batching | Yes | Varies | N/A |
+| Published with SLSA provenance | Yes | Rare | No |
 
 ## Quick Start
 
