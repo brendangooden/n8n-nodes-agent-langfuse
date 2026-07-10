@@ -335,7 +335,7 @@ function preparePrompt(messages: MessageTuple[]): ChatPromptTemplate {
 // Agent executor creation
 // ---------------------------------------------------------------------------
 
-function createAgentExecutor(
+export function createAgentExecutor(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   model: any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
