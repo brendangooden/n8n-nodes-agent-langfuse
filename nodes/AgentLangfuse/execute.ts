@@ -18,6 +18,23 @@ import type { LangfuseCredentials, LangfuseMetadata } from './types';
 
 const SYSTEM_MESSAGE = 'You are a helpful assistant';
 
+/**
+ * The Langfuse callback handler, with the agent callbacks disabled.
+ *
+ * `@langfuse/langchain` 5.9.1 registers the agent action span under the chain's
+ * own `runId`, which overwrites the chain span in the handler's internal run map,
+ * and parents it at the root, because `AgentExecutor` hands `handleAgentAction`
+ * the chain's `parentRunId`. The chain span is then never ended: its trace is
+ * exported with no root, and every later span is reparented under a second trace.
+ * Tool calls are already reported by `handleToolStart`, so dropping these two
+ * callbacks loses no information and restores a single, correctly nested trace.
+ */
+class AgentLangfuseCallbackHandler extends CallbackHandler {
+  async handleAgentAction(): Promise<void> {}
+
+  async handleAgentEnd(): Promise<void> {}
+}
+
 // ---------------------------------------------------------------------------
 // Helpers inlined from the V2 reference implementation
 // ---------------------------------------------------------------------------
@@ -756,11 +773,22 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
 
       // Credentials no longer live on the handler: in the v5 SDK they belong to
       // the span processor, which `withTracing` selects for this execution.
-      const langfuseHandler = new CallbackHandler({
+      const langfuseHandler = new AgentLangfuseCallbackHandler({
         sessionId: langfuseMetadata.sessionId,
         userId: langfuseMetadata.userId,
         traceMetadata: langfuseMetadata.customMetadata,
       });
+
+      // LangChain dispatches callbacks on a background queue unless the handler
+      // asks to be awaited, and the Langfuse handler does not ask. A queued
+      // callback runs in whatever async context happens to drain the queue, and
+      // `withTracing` attributes a span to a Langfuse project by reading an
+      // AsyncLocalStorage. Awaiting the handler inline is what makes that
+      // attribution the raising execution's, rather than whichever execution
+      // happened to drain the queue. It also keeps every span ended before the
+      // flush. Traces come out correct without this today, so it is a guard on
+      // an invariant rather than a fix for an observed failure.
+      langfuseHandler.awaitHandlers = true;
 
       // -------------------------------------------------------------------
       // Build system message (from Langfuse or from options)
@@ -849,6 +877,7 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
 
       return await withTracing(
         langfuseCreds,
+        { sessionId: langfuseMetadata.sessionId, userId: langfuseMetadata.userId },
         async () => {
           if ('isStreaming' in this && enableStreaming && isStreamingAvailable) {
             let chatHistory: unknown;

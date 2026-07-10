@@ -13,6 +13,8 @@ const {
   resetTracingForTests,
   runWithRouteForTests,
   runTracedForTests,
+  isTraceRoot,
+  applyTraceIdentity,
 } = require('../dist/nodes/AgentLangfuse/tracing');
 
 const CREDS_A = { url: 'https://lf.example.com', publicKey: 'pk-a', secretKey: 'sk-a' };
@@ -144,7 +146,7 @@ test('a throwing flush reporter cannot prevent trace routes from being released'
     throw new Error('reporter exploded');
   };
 
-  const route = { fingerprint: credentialFingerprint(CREDS_A), traceIds: new Set() };
+  const route = { fingerprint: credentialFingerprint(CREDS_A), identity: {}, traceIds: new Set() };
 
   const result = await runTracedForTests(
     provider,
@@ -162,4 +164,54 @@ test('a throwing flush reporter cannot prevent trace routes from being released'
 
   router.onEnd(fakeSpan('trace-boom'));
   assert.deepEqual(processor.seen.ended, [], 'the route must have been released');
+});
+
+test('only the root span of a trace carries the session and user identity', async () => {
+  const processor = fakeProcessor();
+  const router = new RoutingSpanProcessor(() => processor);
+  router.ensure(CREDS_A);
+
+  // Langfuse reads session.id and user.id off the root span of the trace. Its
+  // own propagateAttributes writes them to the active OpenTelemetry span, which
+  // does not exist unless a global context manager is registered, so the node
+  // writes them itself.
+  const attributes = new Map();
+  const root = {
+    ...fakeSpan('trace-identity'),
+    setAttribute: (key, value) => attributes.set(key, value),
+  };
+  const child = {
+    ...fakeSpan('trace-identity'),
+    parentSpanContext: { spanId: 'aaaaaaaaaaaaaaaa' },
+    setAttribute: (key, value) => attributes.set('CHILD:' + key, value),
+  };
+
+  assert.equal(isTraceRoot(root), true);
+  assert.equal(isTraceRoot(child), false);
+
+  await runWithRouteForTests(
+    router,
+    CREDS_A,
+    async () => {
+      router.onStart(root, {});
+      router.onStart(child, {});
+    },
+    new Set(),
+    { sessionId: 'sess-1', userId: 'user-1' },
+  );
+
+  assert.equal(attributes.get('session.id'), 'sess-1');
+  assert.equal(attributes.get('user.id'), 'user-1');
+  assert.equal([...attributes.keys()].some((k) => k.startsWith('CHILD:')), false);
+});
+
+test('an absent session or user id writes no attribute at all', () => {
+  const attributes = new Map();
+  const span = { setAttribute: (key, value) => attributes.set(key, value) };
+
+  applyTraceIdentity(span, {});
+  assert.equal(attributes.size, 0, 'undefined identity must not write empty attributes');
+
+  applyTraceIdentity(span, { userId: 'user-only' });
+  assert.deepEqual([...attributes.entries()], [['user.id', 'user-only']]);
 });

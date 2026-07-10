@@ -7,13 +7,20 @@ import {
   type SpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
 import { LangfuseSpanProcessor } from '@langfuse/otel';
-import { setLangfuseTracerProvider } from '@langfuse/tracing';
+import { LangfuseOtelSpanAttributes, setLangfuseTracerProvider } from '@langfuse/tracing';
 
 import { resolveBaseUrl } from './langfuse';
 import type { LangfuseCredentials } from './types';
 
+/** Trace level fields Langfuse reads from the root span of a trace. */
+export interface TraceIdentity {
+  sessionId?: string;
+  userId?: string;
+}
+
 interface TraceRoute {
   fingerprint: string;
+  identity: TraceIdentity;
   traceIds: Set<string>;
 }
 
@@ -24,6 +31,30 @@ const routeStorage = new AsyncLocalStorage<TraceRoute>();
 
 export function credentialFingerprint(credentials: LangfuseCredentials): string {
   return `${credentials.publicKey}@${resolveBaseUrl(credentials)}`;
+}
+
+/** A span with no parent starts a new trace. OTel 2.x renamed `parentSpanId`. */
+export function isTraceRoot(span: Span | ReadableSpan): boolean {
+  const s = span as { parentSpanContext?: unknown; parentSpanId?: unknown };
+  return !s.parentSpanContext && !s.parentSpanId;
+}
+
+/**
+ * Writes `sessionId` and `userId` onto the root span of a trace.
+ *
+ * Langfuse's own `propagateAttributes` would do this, but it writes to
+ * `trace.getActiveSpan()`, which is undefined unless a global OpenTelemetry
+ * context manager is registered. n8n registers one only while its `otel` module
+ * is enabled, and this package will not install process wide OpenTelemetry
+ * globals to work around that. The attribute keys are public API.
+ */
+export function applyTraceIdentity(span: Span, identity: TraceIdentity): void {
+  if (identity.sessionId) {
+    span.setAttribute(LangfuseOtelSpanAttributes.TRACE_SESSION_ID, identity.sessionId);
+  }
+  if (identity.userId) {
+    span.setAttribute(LangfuseOtelSpanAttributes.TRACE_USER_ID, identity.userId);
+  }
 }
 
 /**
@@ -60,6 +91,7 @@ export class RoutingSpanProcessor implements SpanProcessor {
     const { traceId } = span.spanContext();
     this.routes.set(traceId, route.fingerprint);
     route.traceIds.add(traceId);
+    if (isTraceRoot(span)) applyTraceIdentity(span, route.identity);
     this.processors.get(route.fingerprint)?.onStart(span, parentContext);
   }
 
@@ -145,12 +177,13 @@ async function runTraced<T>(
  */
 export async function withTracing<T>(
   credentials: LangfuseCredentials,
+  identity: TraceIdentity,
   fn: () => Promise<T>,
   onFlushError?: (error: Error) => void,
 ): Promise<T> {
   const { provider: activeProvider, router: activeRouter } = ensureProvider();
   const fingerprint = activeRouter.ensure(credentials);
-  const route: TraceRoute = { fingerprint, traceIds: new Set() };
+  const route: TraceRoute = { fingerprint, identity, traceIds: new Set() };
   return runTraced(activeProvider, activeRouter, route, fn, onFlushError);
 }
 
@@ -165,9 +198,10 @@ export async function runWithRouteForTests<T>(
   credentials: LangfuseCredentials,
   fn: () => Promise<T>,
   traceIds: Set<string> = new Set(),
+  identity: TraceIdentity = {},
 ): Promise<T> {
   const fingerprint = activeRouter.ensure(credentials);
-  return routeStorage.run({ fingerprint, traceIds }, fn);
+  return routeStorage.run({ fingerprint, identity, traceIds }, fn);
 }
 
 // Exposed so the flush-error and cleanup path can be driven with a fake
