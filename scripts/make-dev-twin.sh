@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# make-dev-twin.sh — genera el "gemelo dev" del nodo a partir del codigo real.
+# make-dev-twin.sh: genera el "gemelo dev" del nodo a partir del codigo real.
 #
 # El gemelo es un paquete npm separado (n8n-nodes-agent-langfuse-dev) que puede
 # convivir con el nodo de produccion en la MISMA instancia de n8n. Para ello

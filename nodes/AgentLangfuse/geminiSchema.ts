@@ -220,7 +220,7 @@ function toJsonSchema(schema: unknown): Record<string, unknown> | undefined {
 
 /**
  * Replace each tool's advertised schema with a Gemini-safe JSON Schema.
- * The tool still executes normally — only the schema sent to the model
+ * The tool still executes normally: only the schema sent to the model
  * changes. No-op for tools whose schema can't be converted.
  */
 export function sanitizeToolsForGemini(tools: unknown[]): unknown[] {

@@ -264,7 +264,7 @@ test('sanitizeToolsForGemini converts a Zod schema without a type union', () => 
 // End-to-end structural guarantee: a realistic MCP-style tool schema (which
 // carries every keyword Gemini rejects) must come out the other side with
 // ZERO forbidden keywords, no unsupported string formats, and every object
-// declaring `properties` — i.e. a shape Vertex accepts. This is the offline
+// declaring `properties`, i.e. a shape Vertex accepts. This is the offline
 // stand-in for a real Vertex call (no Google credentials in the test env).
 test('sanitizeToolsForGemini produces a Gemini-safe schema for a realistic MCP tool', () => {
   const FORBIDDEN = [
