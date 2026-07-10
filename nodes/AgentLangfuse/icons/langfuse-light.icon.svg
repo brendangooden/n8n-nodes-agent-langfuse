@@ -1,13 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60">
   <!-- Robot bust, drawn for this package. Same visual grammar as n8n's agent
-       icon (24px grid, 1.5 stroke, round joins), independent geometry: the head
-       and the visor are rounded rects rather than beziers, and the shoulders are
-       a single arc. -->
-  <g transform="translate(6, 8) scale(2)" fill="none" stroke="#333" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+       icon (24px grid, 1.5 stroke), independent geometry: the head and the visor
+       are rounded rects rather than beziers, and the shoulders are a single arc.
+       The shoulder crossbar sits at y=15.5, the head's own baseline, so the two
+       strokes are collinear where they meet. Butt caps leave the open ends of
+       the antenna and the shoulders square. -->
+  <g transform="translate(6, 8) scale(2)" fill="none" stroke="#333" stroke-width="1.5" stroke-linecap="butt" stroke-linejoin="round">
     <path d="M12 1.5V5" />
     <rect x="4" y="5" width="16" height="10.5" rx="5.25" />
     <rect x="7.25" y="8" width="9.5" height="4.5" rx="2.25" />
-    <path d="M2.5 21.5v-1a5.5 5.5 0 0 1 5.5-5.5h8a5.5 5.5 0 0 1 5.5 5.5v1" />
+    <path d="M2.5 21.5v-.5a5.5 5.5 0 0 1 5.5-5.5h8a5.5 5.5 0 0 1 5.5 5.5v.5" />
   </g>
 <!-- Langfuse color icon (small, top-right near antenna) -->
   <g transform="translate(38, 1) scale(0.75)">
