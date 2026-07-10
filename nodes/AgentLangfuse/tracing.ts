@@ -106,6 +106,37 @@ function ensureProvider(): { provider: BasicTracerProvider; router: RoutingSpanP
   return { provider, router };
 }
 
+interface FlushableProvider {
+  forceFlush(): Promise<void>;
+}
+
+async function runTraced<T>(
+  provider: FlushableProvider,
+  activeRouter: RoutingSpanProcessor,
+  route: TraceRoute,
+  fn: () => Promise<T>,
+  onFlushError?: (error: Error) => void,
+): Promise<T> {
+  try {
+    return await routeStorage.run(route, fn);
+  } finally {
+    try {
+      await provider.forceFlush();
+    } catch (error) {
+      // A reporter that throws must not take the execution down with it, nor
+      // skip the cleanup below. A stale route would outlive its execution and
+      // could attribute a later span to the wrong project.
+      try {
+        onFlushError?.(error as Error);
+      } catch {
+        // ignore
+      }
+    } finally {
+      activeRouter.release(route.traceIds);
+    }
+  }
+}
+
 /**
  * Runs `fn` with every span it raises attributed to `credentials`, then flushes.
  *
@@ -120,24 +151,7 @@ export async function withTracing<T>(
   const { provider: activeProvider, router: activeRouter } = ensureProvider();
   const fingerprint = activeRouter.ensure(credentials);
   const route: TraceRoute = { fingerprint, traceIds: new Set() };
-
-  try {
-    return await routeStorage.run(route, fn);
-  } finally {
-    try {
-      await activeProvider.forceFlush();
-    } catch (error) {
-      // A reporter that throws must not take the execution down with it, nor
-      // skip the cleanup below.
-      try {
-        onFlushError?.(error as Error);
-      } catch {
-        // ignore
-      }
-    } finally {
-      activeRouter.release(route.traceIds);
-    }
-  }
+  return runTraced(activeProvider, activeRouter, route, fn, onFlushError);
 }
 
 // Test seams. Not part of the node's runtime path.
@@ -155,3 +169,9 @@ export async function runWithRouteForTests<T>(
   const fingerprint = activeRouter.ensure(credentials);
   return routeStorage.run({ fingerprint, traceIds }, fn);
 }
+
+// Exposed so the flush-error and cleanup path can be driven with a fake
+// provider whose forceFlush() rejects on demand. The real provider is a
+// BasicTracerProvider backed by real LangfuseSpanProcessors, which a test
+// cannot make fail on cue.
+export const runTracedForTests = runTraced;

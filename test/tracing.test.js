@@ -12,6 +12,7 @@ const {
   RoutingSpanProcessor,
   resetTracingForTests,
   runWithRouteForTests,
+  runTracedForTests,
 } = require('../dist/nodes/AgentLangfuse/tracing');
 
 const CREDS_A = { url: 'https://lf.example.com', publicKey: 'pk-a', secretKey: 'sk-a' };
@@ -125,21 +126,40 @@ test('forceFlush flushes every credential', async () => {
   assert.deepEqual(processors.map((p) => p.seen.flushes), [1, 1]);
 });
 
-test('release cleanup completes even when flush and reporter throw', async () => {
-  const p = fakeProcessor();
-  const router = new RoutingSpanProcessor(() => p);
+test('a throwing flush reporter cannot prevent trace routes from being released', async () => {
+  const processor = fakeProcessor();
+  const router = new RoutingSpanProcessor(() => processor);
   router.ensure(CREDS_A);
 
-  const traceIds = new Set();
-  await runWithRouteForTests(router, CREDS_A, async () => {
-    router.onStart(fakeSpan('trace-cleanup-final'), {});
-  }, traceIds);
+  // Both the flush and the reporter fail. Tracing is observability: neither may
+  // fail the execution, and neither may skip the cleanup.
+  const provider = {
+    forceFlush: async () => {
+      throw new Error('flush failed');
+    },
+  };
+  let reported = false;
+  const onFlushError = () => {
+    reported = true;
+    throw new Error('reporter exploded');
+  };
 
-  // The span is now routed under CREDS_A. After release, it must no longer route.
-  // The fix nests finally blocks to guarantee release() runs unconditionally,
-  // even if both the flush and error reporter throw. Verify the invariant.
-  router.release(traceIds);
-  router.onEnd(fakeSpan('trace-cleanup-final'));
+  const route = { fingerprint: credentialFingerprint(CREDS_A), traceIds: new Set() };
 
-  assert.deepEqual(p.seen.ended, [], 'release must forget routes even after error handlers throw');
+  const result = await runTracedForTests(
+    provider,
+    router,
+    route,
+    async () => {
+      router.onStart(fakeSpan('trace-boom'), {});
+      return 'the execution result';
+    },
+    onFlushError,
+  );
+
+  assert.equal(result, 'the execution result', 'a tracing failure must not fail the execution');
+  assert.ok(reported, 'the flush error should have been reported');
+
+  router.onEnd(fakeSpan('trace-boom'));
+  assert.deepEqual(processor.seen.ended, [], 'the route must have been released');
 });
