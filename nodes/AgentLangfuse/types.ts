@@ -1,4 +1,4 @@
-import type { ChatPromptClient } from 'langfuse';
+import type { ChatPromptClient } from '@langfuse/client';
 
 export interface LangfuseCredentials {
   host?: string;
@@ -23,6 +23,7 @@ export interface LangfusePromptResult {
 export interface LangfuseMetadata {
   sessionId?: string;
   userId?: string;
+  environment?: string;
   traceName?: string;
   customMetadata?: Record<string, unknown>;
 }
