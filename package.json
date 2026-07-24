@@ -1,14 +1,22 @@
 {
   "name": "@brendangubt/n8n-nodes-agent-langfuse",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "n8n AI Agent node with native Langfuse integration: tracing + prompt management. Fork of n8n-nodes-agent-langfuse with prompt variable support.",
   "keywords": [
     "n8n-community-node-package",
     "langfuse",
     "langchain",
     "ai-agent",
+    "agent",
+    "ai",
+    "llm",
     "observability",
-    "tracing"
+    "tracing",
+    "prompt-management",
+    "openai",
+    "anthropic",
+    "gemini",
+    "openrouter"
   ],
   "license": "MIT",
   "author": {
@@ -18,6 +26,10 @@
     {
       "name": "diward",
       "email": "edu.diward@gmail.com"
+    },
+    {
+      "name": "harmoney-stella",
+      "url": "https://github.com/harmoney-stella"
     }
   ],
   "publishConfig": {
@@ -39,8 +51,17 @@
     "prepublishOnly": "npm run build"
   },
   "files": [
-    "dist"
+    "dist",
+    "NOTICE"
   ],
+  "peerDependencies": {
+    "n8n": ">=2.0.0"
+  },
+  "peerDependenciesMeta": {
+    "n8n": {
+      "optional": true
+    }
+  },
   "n8n": {
     "n8nNodesApiVersion": 1,
     "credentials": [
@@ -51,15 +72,24 @@
     ]
   },
   "dependencies": {
-    "@langchain/core": ">=0.3.58 <0.4.0",
-    "@langchain/openai": "^0.4.0",
-    "langchain": "^0.3.0",
-    "langfuse": "^3.0.0",
-    "langfuse-langchain": "^3.0.0",
-    "lodash": "^4.17.21"
+    "@langchain/classic": "^1.0.27",
+    "@langchain/core": "^1.1.41",
+    "@langchain/openai": "^1.4.4",
+    "@langfuse/client": "^5.9.1",
+    "@langfuse/langchain": "^5.9.1",
+    "@langfuse/otel": "^5.9.1",
+    "@langfuse/tracing": "^5.9.1",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/core": "^2.0.1",
+    "@opentelemetry/exporter-trace-otlp-http": ">=0.202.0 <1.0.0",
+    "@opentelemetry/sdk-trace-base": "^2.0.1",
+    "lodash": "^4.17.21",
+    "zod-to-json-schema": "^3.22.3"
   },
   "devDependencies": {
+    "@types/node": "^20.19.43",
     "n8n-workflow": "^2.13.1",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "zod": "^3.25.76"
   }
 }

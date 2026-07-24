@@ -6,7 +6,7 @@
 
 > Fork of [n8n-nodes-agent-langfuse](https://github.com/Diward/n8n-nodes-agent-langfuse) by [diward](https://github.com/Diward), adding Langfuse prompt variable substitution and auto-loaded prompt variables.
 
-An n8n community node that brings **AI Agent execution** and **[Langfuse](https://langfuse.com) observability** together in a single node. Select prompts from Langfuse, override models dynamically, and get full tracing — all without extra nodes in your workflow.
+An n8n community node that brings **AI Agent execution** and **[Langfuse](https://langfuse.com) observability** together in a single node. Select prompts from Langfuse, override models dynamically, and get full tracing, all without extra nodes in your workflow.
 
 > **First n8n node to combine Agent V3 architecture with native Langfuse prompt management and tracing.**
 
@@ -24,18 +24,23 @@ If you use n8n's AI Agent with Langfuse, you currently need:
 
 ### vs. other Langfuse nodes
 
-| Feature | This node | Official Langfuse nodes | Wistron DXLab |
-|---------|-----------|------------------------|---------------|
-| Agent execution | Yes | No (separate nodes) | Yes |
-| Prompt selector dropdown | Yes | Yes (separate node) | No |
+Two kinds of node exist in this space: an agent node (runs the tool-calling agent and traces it) and the official Langfuse node (fetches a prompt, no agent). This node is the agent kind, kept current with n8n's own agent.
+
+| Feature | This node | Other agent + Langfuse nodes | Official Langfuse node |
+|---------|-----------|------------------------------|------------------------|
+| Runs the tool-calling agent | Yes | Yes | No (prompt fetch only) |
+| Prompt selector dropdown | Yes | No | Yes |
 | Prompt variable substitution (auto-loaded fields) | Yes | No | No |
+| Model / temperature from prompt config | Yes | No | N/A |
 | Generation linked to prompt version | Yes | No | No |
-| Model override from prompt config | Yes | N/A | No |
-| Auto metadata (execution, workflow, node, project, prompt) | Yes | No | No |
-| Agent V3 architecture | Yes | N/A | No (V2) |
-| Streaming support | Yes | N/A | Limited |
-| Fallback model | Yes | N/A | Yes |
-| Batching | Yes | N/A | Yes |
+| LangChain major aligned with n8n 2.x (tools work) | Yes (1.x) | Mixed (many still on 0.3) | N/A |
+| Langfuse SDK | v5 (OpenTelemetry) | mostly v3 (legacy callback) | N/A (declarative HTTP) |
+| No trace leak across projects (per-credential routing) | Yes | No | N/A |
+| Trace id + URL on the node output | Yes | Rare | N/A |
+| Google Gemini / Vertex tool schemas sanitized | Yes | No | N/A |
+| PDF / text attachment passthrough | Yes | No | N/A |
+| Streaming, fallback model, batching | Yes | Varies | N/A |
+| Published with SLSA provenance | Yes | Rare | No |
 
 ## Quick Start
 
@@ -43,21 +48,21 @@ If you use n8n's AI Agent with Langfuse, you currently need:
 2. **Create** a Langfuse API credential with your Base URL, Public Key, and Secret Key
 3. **Add** "AI Agent + Langfuse" to your workflow and connect a Chat Model
 4. **Select** a Langfuse prompt from the dropdown
-5. **Execute** — the agent runs with your prompt and traces to Langfuse automatically
+5. **Execute**: the agent runs with your prompt and traces to Langfuse automatically
 
 ## Features
 
-- **Langfuse Prompt Selector** — Browse and select production prompts from Langfuse directly in the node UI. No HTTP Request nodes needed.
-- **Model Override** — Use the model and temperature defined in your Langfuse prompt config, or override manually. Switch models by changing Langfuse config — no workflow edits required.
-- **Prompt Variable Substitution** — `{{variables}}` in your Langfuse prompt auto-load as editable fields in the node. Values support n8n expressions and are validated before any LLM call.
-- **Prompt-Linked Generations** — Each generation is linked to the Langfuse prompt version, so it appears under the prompt's *Generations* tab and feeds its metrics (cost, latency by version).
-- **Automatic Tracing** — Every execution is traced to Langfuse with full LLM call details, tool usage, and intermediate steps. The trace name defaults to `<workflow name> - <node name>`, so traces are easy to disambiguate when you reuse a node across workflows.
-- **Auto Metadata** — Execution ID, workflow info, node name, project, and prompt name/version are automatically included in every trace. Add your own custom metadata on top (reserved keys are listed in the [Langfuse Metadata](#langfuse-metadata) section).
-- **Streaming** — Full streaming support for real-time responses.
-- **Fallback Model** — Configure a backup model that activates if the primary fails.
-- **Batch Processing** — Process multiple items with configurable batch size and delay.
-- **Output Parser** — Connect structured output parsers for typed responses.
-- **Memory** — Connect memory nodes for conversational agents.
+- **Langfuse Prompt Selector**: Browse and select production prompts from Langfuse directly in the node UI. No HTTP Request nodes needed.
+- **Model Override**: Use the model and temperature defined in your Langfuse prompt config, or override manually. Switch models by changing Langfuse config, with no workflow edits required.
+- **Prompt Variable Substitution**: `{{variables}}` in your Langfuse prompt auto-load as editable fields in the node. Values support n8n expressions and are validated before any LLM call.
+- **Prompt-Linked Generations**: Each generation is linked to the Langfuse prompt version, so it appears under the prompt's *Generations* tab and feeds its metrics (cost, latency by version).
+- **Automatic Tracing**: Every execution is traced to Langfuse with full LLM call details, tool usage, and intermediate steps. The trace name defaults to `<workflow name> - <node name>`, so traces are easy to disambiguate when you reuse a node across workflows.
+- **Auto Metadata**: Execution ID, workflow info, node name, project, and prompt name/version are automatically included in every trace. Add your own custom metadata on top (reserved keys are listed in the [Langfuse Metadata](#langfuse-metadata) section).
+- **Streaming**: Full streaming support for real-time responses.
+- **Fallback Model**: Configure a backup model that activates if the primary fails.
+- **Batch Processing**: Process multiple items with configurable batch size and delay.
+- **Output Parser**: Connect structured output parsers for typed responses.
+- **Memory**: Connect memory nodes for conversational agents.
 
 ## Installation
 
@@ -82,19 +87,23 @@ npm install @brendangubt/n8n-nodes-agent-langfuse
 
 ![Credential setup](assets/credential-setup.png)
 
+> Screenshot pending update. It predates 0.3.0, so it shows the credential named "Langfuse API" and its first field labelled "Langfuse Host URL". They are now **Agent Langfuse API** and **Base URL**. The steps below are current.
+
 1. In n8n, go to **Credentials > New Credential**
-2. Search for **Langfuse API**
+2. Search for **Agent Langfuse API**
 3. Fill in:
    - **Base URL**: Your Langfuse instance URL (e.g., `https://cloud.langfuse.com` or your self-hosted URL)
    - **Public Key**: Your Langfuse project public key
    - **Secret Key**: Your Langfuse project secret key
-4. Click **Test** to verify the connection — you should see "Connection tested successfully"
+4. Click **Test** to verify the connection. You should see "Connection tested successfully"
 
 > **Tip:** Find your keys in Langfuse under **Settings > Projects > [Your Project] > API Keys**
 
 ### 2. Configure the Node
 
 ![Node configuration](assets/node-configuration.png)
+
+> Screenshot pending update. Its Custom Metadata example sets `workflow` and reads `{{ $execution.id }}` by hand. Both are now populated automatically, and `workflow` is a reserved key that gets dropped with a warning. Do not copy that JSON. See [Automatic Metadata](#automatic-metadata).
 
 1. Search for **"AI Agent + Langfuse"** in the node panel
 2. Drag it into your workflow
@@ -116,6 +125,8 @@ npm install @brendangubt/n8n-nodes-agent-langfuse
 
 ![Prompt dropdown](assets/prompt-dropdown.png)
 
+> Screenshot pending update. The Custom Metadata panel visible behind the dropdown carries the same outdated example noted above.
+
 The dropdown fetches all production `chat`-type prompts from your Langfuse project. Select one, and the node automatically:
 - Injects the prompt content as the system message
 - Reads the model and temperature from the prompt config (if Model Source = "From Langfuse")
@@ -125,30 +136,30 @@ The dropdown fetches all production `chat`-type prompts from your Langfuse proje
 
 | Option | Description |
 |--------|-------------|
-| **From Langfuse** | Uses the `model` and `temperature` from your Langfuse prompt's config. The connected Chat Model provides the provider and API key — only the model name is overridden. |
+| **From Langfuse** | Uses the `model` and `temperature` from your Langfuse prompt's config. The connected Chat Model provides the provider and API key; only the model name is overridden. |
 | **Manual Override** | Uses the model exactly as configured in the connected Chat Model node. |
 
-> **How model override works:** When you select "From Langfuse", the node creates a new LLM instance using the same provider and API key from your connected Chat Model, but with the model name from Langfuse. For example, if your Chat Model is configured with OpenRouter and `gpt-4.1-mini`, but your Langfuse prompt has `model: "openai/gpt-5-nano"`, the node will call OpenRouter with `gpt-5-nano`. Change models in Langfuse — no workflow changes needed.
+> **How model override works:** When you select "From Langfuse", the node creates a new LLM instance using the same provider and API key from your connected Chat Model, but with the model name from Langfuse. For example, if your Chat Model is configured with OpenRouter and `gpt-4.1-mini`, but your Langfuse prompt has `model: "openai/gpt-5-nano"`, the node will call OpenRouter with `gpt-5-nano`. Change models in Langfuse, with no workflow changes needed.
 
 ### Prompt Variables
 
-Langfuse chat prompts can contain `{{variable}}` placeholders in their `system` and `user` messages. The node reads the selected prompt and **auto-populates one input field per `{{variable}}`** — no need to type variable names by hand.
+Langfuse chat prompts can contain `{{variable}}` placeholders in their `system` and `user` messages. The node reads the selected prompt and **auto-populates one input field per `{{variable}}`**, so there is no need to type variable names by hand.
 
 - Select a Langfuse prompt, then open the **Prompt Variables** mapper. It lists every `{{var}}` referenced by that prompt's `system` and `user` messages.
 - Each value supports full n8n expression syntax (e.g. `{{ $json.customer }}`).
 - If you change the selected prompt, click the mapper's **refresh** icon to reload the field list for the new prompt.
 - If the prompt has no `{{variables}}`, the mapper shows a notice and there's nothing to fill in.
 
-**Missing variables throw a `NodeOperationError`** before any LLM call is made, listing exactly which names need values. Empty-string values count as missing — this runtime check is the real guard (the mapper marks fields required but won't hard-block execution).
+**Missing variables throw a `NodeOperationError`** before any LLM call is made, listing exactly which names need values. Empty-string values count as missing. This runtime check is the real guard (the mapper marks fields required but won't hard-block execution).
 
 #### How the Langfuse user message interacts with Text / chatInput
 
 | Langfuse prompt contains... | Result |
 |---|---|
-| `system` only | Compiled system message is used. `Prompt Type` / `Text` (or `chatInput`) drives the human turn — existing behaviour. |
+| `system` only | Compiled system message is used. `Prompt Type` / `Text` (or `chatInput`) drives the human turn, as before. |
 | `system` + `user` | Compiled system message is used. **Compiled user message replaces the human turn**; `Prompt Type` / `Text` field is ignored. Map any free-form input via a variable instead (e.g. set the `question` field to `{{ $json.chatInput }}`). |
 
-**Example A — parameterised system prompt, free-form user input:**
+**Example A: parameterised system prompt, free-form user input:**
 
 ```
 Langfuse prompt:
@@ -163,7 +174,7 @@ Result:
   human  → chatInput from previous node (unchanged)
 ```
 
-**Example B — fully parameterised prompt:**
+**Example B: fully parameterised prompt:**
 
 ```
 Langfuse prompt:
@@ -187,7 +198,7 @@ Result (chatInput ignored):
 | **Auto (From Previous Node)** | Reads the `chatInput` field from the previous node's output. Works automatically with Chat Trigger and other AI nodes. |
 | **Define Below** | Write a fixed prompt text in the node. |
 
-> Ignored when the selected Langfuse prompt defines a `user`-role message — see **Prompt Variables** above.
+> Ignored when the selected Langfuse prompt defines a `user`-role message. See **Prompt Variables** above.
 
 ### Langfuse Metadata
 
@@ -195,12 +206,13 @@ Result (chatInput ignored):
 |-------|-------------|
 | **Session ID** | Groups related traces in Langfuse. Supports n8n expressions (e.g., `{{ $json.sessionId }}`). |
 | **User ID** | Identifies the end user. Supports expressions. |
-| **Trace Name** | Custom name for the trace. **Defaults to `<workflow name> - <node name>`** — e.g. a node named "AI Agent - Selector" in the workflow "Customer Support" produces the trace name "Customer Support - AI Agent - Selector". |
+| **Environment** | The Langfuse environment for the trace, e.g. `production` or `staging`. Left empty, Langfuse applies its own default. |
+| **Trace Name** | Custom name for the trace. **Defaults to `<workflow name> - <node name>`**. For example, a node named "AI Agent - Selector" in the workflow "Customer Support" produces the trace name "Customer Support - AI Agent - Selector". |
 | **Custom Metadata (JSON)** | Any additional metadata you want to attach to traces. |
 
 #### Automatic Metadata
 
-The following fields are **automatically included** in every trace — no configuration needed:
+The following fields are **automatically included** in every trace, with no configuration needed:
 
 | Field | Value | Source |
 |-------|-------|--------|
@@ -213,7 +225,7 @@ The following fields are **automatically included** in every trace — no config
 | `prompt.name` | The selected prompt name | Langfuse prompt |
 | `prompt.version` | The production version number | Langfuse prompt |
 
-> **Reserved keys:** `execution_id`, `workflow`, `node`, `project`, and `prompt` are reserved for the auto-populated values above. These fields are factual and always win — if your Custom Metadata JSON includes any of them, those keys are **dropped** and a warning listing the ignored keys is written to the n8n log.
+> **Reserved keys:** `execution_id`, `workflow`, `node`, `project`, and `prompt` are reserved for the auto-populated values above. These fields are factual and always win: if your Custom Metadata JSON includes any of them, those keys are **dropped** and a warning listing the ignored keys is written to the n8n log.
 
 **Example Custom Metadata:**
 ```json
@@ -240,11 +252,22 @@ The following fields are **automatically included** in every trace — no config
 
 ![Langfuse trace](assets/langfuse-trace.png)
 
+> Screenshot pending update. It predates the automatic workflow context, so its metadata has no `execution_id`, `workflow` object or `node`, and the trace is named after the node alone rather than `<workflow name> - <node name>`.
+
 Every execution produces a full trace in Langfuse showing:
 - The complete LLM call chain (agent, prompt template, model call, output parsing)
 - Token usage and cost
 - The output with structured fields
 - All metadata (automatic + custom)
+
+#### Trace on the node output
+
+Each output item also carries the trace's identity, so a downstream node can link to it, attach a score, or gate on it:
+
+| Field | Value |
+|-------|-------|
+| `langfuseTraceId` | The trace id (matches the trace in Langfuse). |
+| `langfuseTraceUrl` | A direct link to the trace, e.g. `https://cloud.langfuse.com/project/<id>/traces/<traceId>`. Present when the project id can be read from the Langfuse API. |
 
 ### Options
 
@@ -307,7 +330,7 @@ Full conversational agent with tool access and conversation history, all traced 
 
 Each Langfuse API key pair belongs to one project. To use prompts from different projects:
 
-1. Create a **separate Langfuse API credential** for each project
+1. Create a **separate Agent Langfuse API credential** for each project
 2. Select the appropriate credential in each node
 3. The project name in trace metadata updates automatically
 
@@ -315,11 +338,40 @@ Each Langfuse API key pair belongs to one project. To use prompts from different
 
 | Component | Version |
 |-----------|---------|
-| **n8n** | >= 1.70.0 |
+| **n8n** | >= 2.0.0 |
 | **Node.js** | >= 20.15 |
-| **Langfuse** | Any version with API v2 (>= 2.0) |
+| **Langfuse** | >= 3.0 |
+
+On n8n 1.x, use 0.3.3. Langfuse 3.0 is the floor because traces are sent through
+its OpenTelemetry endpoint, which earlier servers do not expose. Verified against
+a self-hosted Langfuse 3.205.
 
 Works with any LangChain-compatible Chat Model: OpenAI, OpenRouter, Anthropic, Azure OpenAI, Google Vertex AI, Ollama, and more.
+
+## Upgrading
+
+### 0.3.x to 0.4.0
+
+This release requires **n8n 2.0.0 or later**. It builds its messages with
+`@langchain/core` 1.x, the version n8n 2.x runs. On n8n 1.x, stay on 0.3.3.
+
+Tools now work. Before 0.4.0 every tool call failed on recent n8n because the
+tool result reached the provider without its `tool_call_id`; 0.3.3 patched that
+from the outside, and 0.4.0 removes the cause.
+
+Traces are unchanged in shape and name. Internally they are now produced through
+OpenTelemetry, so a Langfuse server older than 3.x will not accept them.
+
+No credential change. `agentLangfuseApi` keeps its fields.
+
+### 0.2.x to 0.3.0 (breaking)
+
+The credential type was renamed from `langfuseApi` to `agentLangfuseApi`, shown as **Agent Langfuse API**. n8n indexes credential types by a single global name, and the old one collided with other Langfuse community packages. n8n community nodes have no automatic credential migration, so after upgrading:
+
+1. Create a new **Agent Langfuse API** credential with the same Base URL, Public Key and Secret Key.
+2. Select it in each **AI Agent + Langfuse** node.
+
+The old credential is not deleted. It simply no longer matches this node.
 
 ## Troubleshooting
 

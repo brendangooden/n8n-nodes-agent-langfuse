@@ -1,0 +1,36 @@
+n8n-nodes-agent-langfuse
+Copyright (c) 2026 diward
+
+This product includes software derived from n8n.
+
+The following functions are derived from `ToolsAgent/common.ts` in the package
+@n8n/n8n-nodes-langchain, published by n8n GmbH under the Sustainable Use
+License:
+
+  in nodes/AgentLangfuse/execute.ts
+
+    fixEmptyContentMessage
+    getAgentStepsParser
+    getOutputParserSchema
+    handleAgentFinishOutput
+    handleParsedStepOutput
+    prepareMessages
+    preparePrompt
+
+  in nodes/AgentLangfuse/binaryPassthrough.ts
+
+    extractBinaryMessages
+    isImageFile
+    isPdfFile
+    isTextFile
+    processBinaryForAgentPassthrough
+    shouldPassthroughBinary
+
+Two deliberate differences remain. This node rejects models that speak the
+OpenAI Responses API, so the `input_file` content shape those models require is
+not implemented. And the 50 MB ceiling on a binary attachment is n8n's default
+rather than its configured `maxAgentPassthroughBinarySizeBytes`, which a
+community node cannot read.
+
+Source:  https://github.com/n8n-io/n8n/blob/master/packages/%40n8n/nodes-langchain/nodes/agents/Agent/agents/ToolsAgent/common.ts
+License: https://github.com/n8n-io/n8n/blob/master/LICENSE.md

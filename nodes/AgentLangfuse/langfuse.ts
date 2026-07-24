@@ -1,10 +1,8 @@
-import { Langfuse, type ChatPromptClient } from 'langfuse';
-import { CallbackHandler } from 'langfuse-langchain';
+import { LangfuseClient, type ChatPromptClient } from '@langfuse/client';
 import { NodeOperationError } from 'n8n-workflow';
 import type { INode } from 'n8n-workflow';
 import type {
   LangfuseCredentials,
-  LangfuseMetadata,
   LangfusePromptListItem,
   LangfusePromptResult,
 } from './types';
@@ -25,8 +23,8 @@ export function resolveBaseUrl(credentials: LangfuseCredentials): string {
   );
 }
 
-function createLangfuseClient(credentials: LangfuseCredentials): Langfuse {
-  return new Langfuse({
+function createLangfuseClient(credentials: LangfuseCredentials): LangfuseClient {
+  return new LangfuseClient({
     publicKey: credentials.publicKey,
     secretKey: credentials.secretKey,
     baseUrl: resolveBaseUrl(credentials),
@@ -113,7 +111,7 @@ export async function fetchPrompt(
   let promptClient: ChatPromptClient;
   try {
     const client = createLangfuseClient(credentials);
-    promptClient = await client.getPrompt(promptName, undefined, { type: 'chat' });
+    promptClient = await client.prompt.get(promptName, { type: 'chat' });
   } catch (error) {
     const message = (error as Error).message ?? '';
     if (message.includes('404') || message.includes('Not Found')) {
@@ -197,33 +195,16 @@ export function compilePromptMessages(
   };
 }
 
-export async function fetchProjectName(
+export async function fetchProject(
   credentials: LangfuseCredentials,
-): Promise<string | undefined> {
+): Promise<{ name?: string; id?: string }> {
   try {
     const data = (await langfuseApiRequest(credentials, '/api/public/projects')) as {
-      data: Array<{ name: string }>;
+      data: Array<{ name: string; id: string }>;
     };
-    return data.data?.[0]?.name;
+    const project = data.data?.[0];
+    return { name: project?.name, id: project?.id };
   } catch {
-    return undefined;
+    return {};
   }
-}
-
-export function createLangfuseHandler(
-  credentials: LangfuseCredentials,
-  metadata: LangfuseMetadata,
-): CallbackHandler {
-  return new CallbackHandler({
-    publicKey: credentials.publicKey,
-    secretKey: credentials.secretKey,
-    baseUrl: resolveBaseUrl(credentials),
-    sessionId: metadata.sessionId,
-    userId: metadata.userId,
-    metadata: metadata.customMetadata,
-  });
-}
-
-export async function flushHandler(handler: CallbackHandler): Promise<void> {
-  await handler.flushAsync();
 }

@@ -1,25 +1,48 @@
+/*
+ * fixEmptyContentMessage, getAgentStepsParser, getOutputParserSchema,
+ * handleAgentFinishOutput, handleParsedStepOutput, prepareMessages and
+ * preparePrompt are derived from ToolsAgent/common.ts in
+ * @n8n/n8n-nodes-langchain, (c) n8n GmbH, Sustainable Use License. They were
+ * copied so this node's agent loop would behave like the native one. NOTICE
+ * lists the differences that remain.
+ */
 import { RunnableSequence } from '@langchain/core/runnables';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { HumanMessage } from '@langchain/core/messages';
-import { createToolCallingAgent, AgentExecutor, Toolkit } from 'langchain/agents';
-import { DynamicStructuredTool } from 'langchain/tools';
+import { createToolCallingAgent, AgentExecutor, Toolkit } from '@langchain/classic/agents';
+import { DynamicStructuredTool } from '@langchain/classic/tools';
 import { ChatOpenAI } from '@langchain/openai';
+import { CallbackHandler } from '@langfuse/langchain';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const omit = require('lodash/omit') as <T extends object>(obj: T, ...keys: string[]) => Partial<T>;
 import { NodeOperationError, jsonParse, sleep } from 'n8n-workflow';
 import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import { z } from 'zod';
 
-import {
-  compilePromptMessages,
-  createLangfuseHandler,
-  fetchProjectName,
-  fetchPrompt,
-  flushHandler,
-} from './langfuse';
+import { extractBinaryMessages } from './binaryPassthrough';
+import { compilePromptMessages, fetchProject, fetchPrompt, resolveBaseUrl } from './langfuse';
+import { withTracing, type TraceCapture } from './tracing';
+import { isGeminiModel, sanitizeToolsForGemini } from './geminiSchema';
 import type { LangfuseCredentials, LangfuseMetadata } from './types';
 
 const SYSTEM_MESSAGE = 'You are a helpful assistant';
+
+/**
+ * The Langfuse callback handler, with the agent callbacks disabled.
+ *
+ * `@langfuse/langchain` 5.9.1 registers the agent action span under the chain's
+ * own `runId`, which overwrites the chain span in the handler's internal run map,
+ * and parents it at the root, because `AgentExecutor` hands `handleAgentAction`
+ * the chain's `parentRunId`. The chain span is then never ended: its trace is
+ * exported with no root, and every later span is reparented under a second trace.
+ * Tool calls are already reported by `handleToolStart`, so dropping these two
+ * callbacks loses no information and restores a single, correctly nested trace.
+ */
+class AgentLangfuseCallbackHandler extends CallbackHandler {
+  async handleAgentAction(): Promise<void> {}
+
+  async handleAgentEnd(): Promise<void> {}
+}
 
 // ---------------------------------------------------------------------------
 // Helpers inlined from the V2 reference implementation
@@ -141,41 +164,6 @@ function getPromptInputByType(options: {
   return input;
 }
 
-async function extractBinaryMessages(
-  ctx: IExecuteFunctions,
-  itemIndex: number,
-): Promise<HumanMessage> {
-  const binaryData = ctx.getInputData()?.[itemIndex]?.binary ?? {};
-
-  const binaryMessages = await Promise.all(
-    Object.values(binaryData)
-      .filter((data) => data.mimeType.startsWith('image/'))
-      .map(async (data) => {
-        let binaryUrlString: string;
-
-        if (data.id) {
-          const binaryBuffer = await ctx.helpers.binaryToBuffer(
-            await ctx.helpers.getBinaryStream(data.id),
-          );
-          binaryUrlString = `data:${data.mimeType};base64,${Buffer.from(binaryBuffer).toString('base64')}`;
-        } else {
-          binaryUrlString = data.data.includes('base64')
-            ? data.data
-            : `data:${data.mimeType};base64,${data.data}`;
-        }
-
-        return {
-          type: 'image_url' as const,
-          image_url: { url: binaryUrlString },
-        };
-      }),
-  );
-
-  return new HumanMessage({
-    content: [...binaryMessages],
-  });
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function fixEmptyContentMessage(steps: any): any {
   if (!Array.isArray(steps)) return steps;
@@ -199,23 +187,36 @@ function fixEmptyContentMessage(steps: any): any {
   return steps;
 }
 
+/* Exported for tests. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function handleAgentFinishOutput(steps: any): any {
+export function handleAgentFinishOutput(steps: any): any {
   const agentFinishSteps = steps;
   if (agentFinishSteps.returnValues) {
     const isMultiOutput = Array.isArray(agentFinishSteps.returnValues?.output);
     if (isMultiOutput) {
       const multiOutputSteps = agentFinishSteps.returnValues.output as Array<{
+        type?: string;
         text?: string;
+        thinking?: string;
       }>;
-      const isTextOnly = multiOutputSteps.every(
-        (output: { text?: string }) => 'text' in output,
-      );
-      if (isTextOnly) {
-        agentFinishSteps.returnValues.output = multiOutputSteps
-          .map((output: { text?: string }) => output.text)
+      const textOutputs = multiOutputSteps
+        .filter((output) => output.type === 'text' && output.text)
+        .map((output) => output.text)
+        .join('\n')
+        .trim();
+
+      if (textOutputs) {
+        agentFinishSteps.returnValues.output = textOutputs;
+      } else {
+        // An extended reasoning model can answer with `thinking` blocks and no
+        // text. Returning them beats returning nothing, but they never join the
+        // text: the scratchpad is not part of the answer.
+        const thinkingOutputs = multiOutputSteps
+          .filter((output) => output.type === 'thinking' && output.thinking)
+          .map((output) => output.thinking)
           .join('\n')
           .trim();
+        agentFinishSteps.returnValues.output = thinkingOutputs || '';
       }
       return agentFinishSteps;
     }
@@ -231,7 +232,8 @@ function handleParsedStepOutput(output: any, memory: unknown): any {
   };
 }
 
-function getAgentStepsParser(
+/* Exported for tests. */
+export function getAgentStepsParser(
   outputParser: unknown,
   memory: unknown,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -260,7 +262,20 @@ function getAgentStepsParser(
       if (finalResponse instanceof Object) {
         if ('output' in finalResponse) {
           try {
-            parserInput = JSON.stringify({ output: jsonParse(finalResponse.output as string) });
+            const parsedOutput = jsonParse(finalResponse.output as string);
+            if (
+              parsedOutput !== null &&
+              typeof parsedOutput === 'object' &&
+              'output' in parsedOutput &&
+              Object.keys(parsedOutput).length === 1
+            ) {
+              // The model already produced the wrapper the parser expects.
+              // Wrapping it again yields {"output":{"output":...}}, which the
+              // schema rejects.
+              parserInput = JSON.stringify(parsedOutput);
+            } else {
+              parserInput = JSON.stringify({ output: parsedOutput });
+            }
           } catch {
             parserInput = finalResponse.output as string;
           }
@@ -290,6 +305,7 @@ async function prepareMessages(
   options: {
     systemMessage?: string;
     passthroughBinaryImages?: boolean;
+    passthroughBinaryPdfs?: boolean;
     outputParser?: unknown;
   },
 ): Promise<MessageTuple[]> {
@@ -308,10 +324,14 @@ async function prepareMessages(
   messages.push(['placeholder', '{chat_history}'], ['human', '{input}']);
 
   const hasBinaryData = ctx.getInputData()?.[itemIndex]?.binary !== undefined;
-  if (hasBinaryData && options.passthroughBinaryImages) {
-    const binaryMessage = await extractBinaryMessages(ctx, itemIndex);
+  // Text attachments ride along on either option being on, which is why the
+  // gate is an `or` and not a check for the kind of file actually attached.
+  if (hasBinaryData && (options.passthroughBinaryImages || options.passthroughBinaryPdfs)) {
+    const binaryMessage = await extractBinaryMessages(ctx, itemIndex, options);
     if ((binaryMessage.content as unknown[]).length !== 0) {
       messages.push(binaryMessage);
+    } else {
+      ctx.logger.debug('Not attaching binary message, since its content was empty');
     }
   }
 
@@ -328,7 +348,7 @@ function preparePrompt(messages: MessageTuple[]): ChatPromptTemplate {
 // Agent executor creation
 // ---------------------------------------------------------------------------
 
-function createAgentExecutor(
+export function createAgentExecutor(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   model: any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -556,23 +576,28 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
   const enableStreaming = this.getNodeParameter('options.enableStreaming', 0, true) as boolean;
 
   // -----------------------------------------------------------------------
-  // Langfuse prompt source — fetch once (shared across items)
+  // Langfuse prompt source: fetch once (shared across items)
   // -----------------------------------------------------------------------
   const promptSource = this.getNodeParameter('promptSource', 0, 'manual') as string;
   let langfusePromptResult: Awaited<ReturnType<typeof fetchPrompt>> | undefined;
   let langfuseProjectName: string | undefined;
+  let langfuseProjectId: string | undefined;
+
+  // The node always traces to the credential's project, so fetch it once
+  // regardless of prompt source: the name goes on the trace metadata and the id
+  // builds the clickable trace URL surfaced on the node output.
+  {
+    const langfuseCreds = (await this.getCredentials('langfuseApi')) as unknown as LangfuseCredentials;
+    const project = await fetchProject(langfuseCreds);
+    langfuseProjectName = project.name;
+    langfuseProjectId = project.id;
+  }
 
   if (promptSource === 'langfuse') {
     const langfuseCreds = (await this.getCredentials('langfuseApi')) as unknown as LangfuseCredentials;
     const promptName = this.getNodeParameter('langfusePrompt', 0) as string;
 
-    // Fetch prompt and project name in parallel
-    const [promptResult, projectName] = await Promise.all([
-      fetchPrompt(langfuseCreds, promptName, this.getNode()),
-      fetchProjectName(langfuseCreds),
-    ]);
-    langfusePromptResult = promptResult;
-    langfuseProjectName = projectName;
+    langfusePromptResult = await fetchPrompt(langfuseCreds, promptName, this.getNode());
 
     // Optionally override model name and temperature from Langfuse config
     const modelSource = this.getNodeParameter('modelSource', 0, 'manual') as string;
@@ -644,8 +669,8 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
       }
 
       // Get user input. When the Langfuse prompt defines a user-role
-      // message, that compiled content replaces the Text/chatInput field
-      // — Langfuse-defined prompts own the human turn.
+      // message, that compiled content replaces the Text/chatInput field:
+      // Langfuse-defined prompts own the human turn.
       let input: string | undefined;
       if (compiledUserMessage !== undefined) {
         input = compiledUserMessage;
@@ -677,8 +702,16 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
         wrappedTools.push(t);
       }
 
+      // Gemini/Vertex rejects JSON-schema keywords that OpenAI/Anthropic
+      // tolerate (additionalProperties, string formats, anyOf/oneOf, ...).
+      // Sanitize tool schemas so Vertex accepts the functionDeclarations.
+      // No-op for non-Google models, so OpenAI/Anthropic behaviour is unchanged.
+      if (isGeminiModel(model)) {
+        sanitizeToolsForGemini(wrappedTools);
+      }
+
       // -------------------------------------------------------------------
-      // Langfuse handler (per item — different sessionId/userId possible)
+      // Langfuse handler (per item: different sessionId/userId possible)
       // -------------------------------------------------------------------
       const langfuseCreds = (await this.getCredentials('langfuseApi')) as unknown as LangfuseCredentials;
 
@@ -727,7 +760,7 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
       }
 
       // Auto fields are factual (execution id, workflow, node, project,
-      // prompt version) — they always win over user-supplied custom metadata.
+      // prompt version), and always win over user-supplied custom metadata.
       const collidingKeys = Object.keys(parsedCustomMetadata ?? {}).filter(
         (key) => key in autoMetadata,
       );
@@ -746,10 +779,28 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
         customMetadata: mergedMetadata,
         sessionId: rawMetadata.sessionId as string | undefined,
         userId: rawMetadata.userId as string | undefined,
+        environment: (rawMetadata.environment as string) || undefined,
         traceName,
       };
 
-      const langfuseHandler = createLangfuseHandler(langfuseCreds, langfuseMetadata);
+      // Credentials no longer live on the handler: in the v5 SDK they belong to
+      // the span processor, which `withTracing` selects for this execution.
+      const langfuseHandler = new AgentLangfuseCallbackHandler({
+        sessionId: langfuseMetadata.sessionId,
+        userId: langfuseMetadata.userId,
+        traceMetadata: langfuseMetadata.customMetadata,
+      });
+
+      // LangChain dispatches callbacks on a background queue unless the handler
+      // asks to be awaited, and the Langfuse handler does not ask. A queued
+      // callback runs in whatever async context happens to drain the queue, and
+      // `withTracing` attributes a span to a Langfuse project by reading an
+      // AsyncLocalStorage. Awaiting the handler inline is what makes that
+      // attribution the raising execution's, rather than whichever execution
+      // happened to drain the queue. It also keeps every span ended before the
+      // flush. Traces come out correct without this today, so it is a guard on
+      // an invariant rather than a fix for an observed failure.
+      langfuseHandler.awaitHandlers = true;
 
       // -------------------------------------------------------------------
       // Build system message (from Langfuse or from options)
@@ -759,7 +810,7 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
         // Langfuse prompt (with vars substituted) overrides the system message
         systemMessage = compiledSystemMessage;
       } else if (langfusePromptResult) {
-        // Fallback safety net — shouldn't hit when promptSource=langfuse
+        // Fallback safety net: shouldn't hit when promptSource=langfuse
         systemMessage = langfusePromptResult.systemMessage;
       }
 
@@ -769,6 +820,7 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
       const messages = await prepareMessages(this, itemIndex, {
         systemMessage,
         passthroughBinaryImages: (options.passthroughBinaryImages as boolean) ?? true,
+        passthroughBinaryPdfs: (options.passthroughBinaryPdfs as boolean) ?? false,
         outputParser,
       });
 
@@ -816,14 +868,10 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
         callbacks: [langfuseHandler],
         runName: traceName,
         metadata: {
-          sessionId: langfuseMetadata.sessionId,
-          userId: langfuseMetadata.userId,
           ...langfuseMetadata.customMetadata,
-          // Link the LLM generation(s) to the Langfuse prompt version so they
-          // appear under the prompt's "Generations" tab and feed its metrics.
-          // The langfuse-langchain CallbackHandler reads this special
-          // `langfusePrompt` metadata key, maps it by parentRunId to link the
-          // child generation, and strips the key from stored metadata.
+          // Links the generations to the Langfuse prompt version so they appear
+          // under the prompt's Generations tab. The handler reads this reserved
+          // key, maps it by parentRunId, and strips it from stored metadata.
           ...(langfusePromptResult
             ? { langfusePrompt: langfusePromptResult.promptClient }
             : {}),
@@ -831,50 +879,68 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
       };
 
       // -------------------------------------------------------------------
-      // Execute: streaming or invoke
+      // Execute: streaming or invoke, inside the tracing scope
       // -------------------------------------------------------------------
       const isStreamingAvailable =
         'isStreaming' in this ? (this as IExecuteFunctions).isStreaming() : undefined;
 
-      if ('isStreaming' in this && enableStreaming && isStreamingAvailable) {
-        let chatHistory: unknown;
-        if (memory) {
-          const memoryVariables = await (
-            memory as { loadMemoryVariables: (input: object) => Promise<Record<string, unknown>> }
-          ).loadMemoryVariables({});
-          chatHistory = memoryVariables['chat_history'];
+      const onFlushError = (error: Error) => {
+        this.logger.warn(`Could not flush traces to Langfuse: ${error.message}`);
+      };
+
+      const traceCapture: TraceCapture = {};
+
+      const response = await withTracing(
+        langfuseCreds,
+        {
+          sessionId: langfuseMetadata.sessionId,
+          userId: langfuseMetadata.userId,
+          environment: langfuseMetadata.environment,
+        },
+        async () => {
+          if ('isStreaming' in this && enableStreaming && isStreamingAvailable) {
+            let chatHistory: unknown;
+            if (memory) {
+              const memoryVariables = await (
+                memory as {
+                  loadMemoryVariables: (input: object) => Promise<Record<string, unknown>>;
+                }
+              ).loadMemoryVariables({});
+              chatHistory = memoryVariables['chat_history'];
+            }
+
+            const eventStream = executor.streamEvents(
+              { ...invokeParams, chat_history: chatHistory ?? undefined },
+              { version: 'v2', ...executeOptions },
+            );
+
+            return await processEventStream(
+              this,
+              eventStream,
+              itemIndex,
+              options.returnIntermediateSteps as boolean,
+            );
+          }
+
+          return await executor.invoke(invokeParams, executeOptions);
+        },
+        onFlushError,
+        traceCapture,
+      );
+
+      // Surface the Langfuse trace on the node output so downstream nodes can
+      // link to it, score it, or gate on it. The url needs the project id,
+      // which is absent only when the projects endpoint could not be read.
+      if (traceCapture.traceId && response && typeof response === 'object') {
+        const out = response as Record<string, unknown>;
+        out.langfuseTraceId = traceCapture.traceId;
+        if (langfuseProjectId) {
+          const base = resolveBaseUrl(langfuseCreds).replace(/\/+$/, '');
+          out.langfuseTraceUrl = `${base}/project/${langfuseProjectId}/traces/${traceCapture.traceId}`;
         }
-
-        const eventStream = executor.streamEvents(
-          {
-            ...invokeParams,
-            chat_history: chatHistory ?? undefined,
-          },
-          {
-            version: 'v2',
-            ...executeOptions,
-          },
-        );
-
-        const result = await processEventStream(
-          this,
-          eventStream,
-          itemIndex,
-          options.returnIntermediateSteps as boolean,
-        );
-
-        // Flush Langfuse handler after streaming completes
-        await flushHandler(langfuseHandler);
-
-        return result;
-      } else {
-        const result = await executor.invoke(invokeParams, executeOptions);
-
-        // Flush Langfuse handler after invoke completes
-        await flushHandler(langfuseHandler);
-
-        return result;
       }
+
+      return response;
     });
 
     const batchResults = await Promise.allSettled(batchPromises);

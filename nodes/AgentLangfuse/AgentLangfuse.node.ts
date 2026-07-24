@@ -32,7 +32,7 @@ export class AgentLangfuse implements INodeType {
         AI: ['Agents', 'Root Nodes'],
       },
     },
-    // Dynamic inputs based on parameters — evaluated at runtime by n8n expression engine
+    // Dynamic inputs based on parameters, evaluated at runtime by the n8n expression engine
     inputs: `={{
       ((hasOutputParser, needsFallback) => {
         const inputs = [
@@ -140,7 +140,7 @@ export class AgentLangfuse implements INodeType {
         ],
         default: 'auto',
         description:
-          'Ignored when the selected Langfuse prompt defines a user message — that user message becomes the human turn.',
+          'Ignored when the selected Langfuse prompt defines a user message: that user message becomes the human turn.',
       },
       {
         displayName: 'Text',
@@ -208,6 +208,15 @@ export class AgentLangfuse implements INodeType {
             description: 'For trace attribution in Langfuse',
           },
           {
+            displayName: 'Environment',
+            name: 'environment',
+            type: 'string',
+            default: '',
+            placeholder: 'production',
+            description:
+              'Langfuse environment for the trace (e.g. production, staging). Leave empty to use the Langfuse default.',
+          },
+          {
             displayName: 'Trace Name',
             name: 'traceName',
             type: 'string',
@@ -264,6 +273,16 @@ export class AgentLangfuse implements INodeType {
             name: 'passthroughBinaryImages',
             type: 'boolean',
             default: true,
+            description:
+              'Whether or not binary images should be automatically passed through to the agent as image type messages',
+          },
+          {
+            displayName: 'Automatically Passthrough Binary PDFs',
+            name: 'passthroughBinaryPdfs',
+            type: 'boolean',
+            default: false,
+            description:
+              'Whether or not binary PDF documents should be automatically passed through to the agent. Useful for models that natively support PDF input (e.g. Google Gemini).',
           },
           {
             displayName: 'Batch Size',
